@@ -212,13 +212,14 @@ el('abas').onclick = ev => { const b = ev.target.closest('[data-a]'); if (b) abr
 .cx-sub { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
 .cx-sub button { border-radius: 999px; padding: 6px 14px; }
 .cx-sub button.on { background: var(--verde); color: #fff; border-color: var(--verde); }
-.cx-grade { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 18px; }
-@media (max-width: 900px) { .cx-grade { grid-template-columns: 1fr; } }
-.cx-cartoes { display: flex; flex-direction: column; gap: 6px; }
-.cx-cartao { background: var(--sup); border: 1px solid var(--linha); border-radius: 10px; padding: 10px 12px; cursor: pointer; }
-.cx-cartao.on { border-color: var(--verde); box-shadow: inset 3px 0 0 var(--verde); }
-.cx-cartao b { display: block; } .cx-cartao small { color: var(--tx3); font-size: 12px; display: block; }
-.cx-cartao .cx-v { font-family: Outfit, sans-serif; font-size: 16px; color: var(--tx); margin-top: 2px; }
+.cx-grade { display: block; }
+.cx-cartoes { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.cx-cartao { background: var(--sup); border: 1px solid var(--linha); border-radius: 12px; padding: 11px 14px; cursor: pointer; }
+.cx-cartao.on { border: 2px solid var(--verde); padding: 10px 13px; }
+.cx-cartao .cx-topo { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.cx-cartao b { font-size: 14px; } .cx-cartao small { color: var(--tx3); font-size: 12px; display: block; }
+.cx-cartao .cx-topo small { white-space: nowrap; }
+.cx-cartao .cx-v { font-family: Outfit, sans-serif; font-size: 18px; font-weight: 600; color: var(--tx); margin: 4px 0 2px; }
 .cx-painel { background: var(--sup); border: 1px solid var(--linha); border-radius: 12px; padding: 16px; margin-bottom: 14px; overflow-x: auto; }
 .cx-grade > section { min-width: 0; }
 @media (max-width: 700px) { #aba-cartoes { padding: 14px 16px 30px; } .cx-kpis { grid-template-columns: 1fr; } .cx-form { grid-template-columns: 1fr 1fr; } }
@@ -239,7 +240,7 @@ el('abas').onclick = ev => { const b = ev.target.closest('[data-a]'); if (b) abr
 table.cx-t td, table.cx-t th { padding: 5px 7px; font-size: 12.5px; }
 table.cx-t tr:hover td { background: #faf8f4; }
 table.cx-t th.c, table.cx-t td.c { text-align: center; white-space: nowrap; }
-.cx-lim { height: 5px; background: var(--sup2); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+.cx-lim { height: 6px; background: var(--sup2); border-radius: 3px; margin: 6px 0 4px; overflow: hidden; }
 .cx-lim i { display: block; height: 100%; background: var(--verde); } .cx-lim i.alto { background: var(--neg); }
 .cx-check { justify-content: flex-end; } .cx-check input { width: 18px; height: 18px; margin: 8px 0; }
 .cx-filtro { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 10px; }
@@ -697,16 +698,19 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     const kpiFat = S.F.total != null ? brl(S.F.total) : '—';
     const difF = S.F.total != null ? r2(S.totL - S.F.total) : null, difC = r2(S.totCA - S.totL);
     el('cxCorpo').innerHTML = `<div class="cx-grade">
-      <aside class="cx-cartoes">${ativos.map(x => {
+      <div class="cx-cartoes">${ativos.map(x => {
         const ab = vencDe(x.id, hoje()), tot = r2(C.base.lancamentos.filter(l => l.cartao === x.id && l.venc === ab).reduce((s, l) => s + l.valor, 0));
         // limite: tudo o que ainda vai vencer (fatura aberta, próximas e parcelas futuras) ocupa o limite
         const usado = r2(C.base.lancamentos.filter(l => l.cartao === x.id && l.venc >= ab).reduce((s, l) => s + l.valor, 0));
         const pct = x.limite ? Math.min(100, Math.round(usado / x.limite * 100)) : null;
-        return `<div class="cx-cartao ${x.id === cartaoSel ? 'on' : ''}" data-c="${x.id}"><b>${esc(x.nome)}</b><small>fecha dia ${x.fech} · vence dia ${x.venc}</small>
-          <div class="cx-v">${brl(tot)}</div><small>fatura de ${ab ? dia(ab).slice(0, 5) : '—'}${x.conta ? '' : ' · <span class="alerta">sem conta no Conta Azul</span>'}</small>
-          ${pct !== null ? `<div class="cx-lim" title="Limite ${brl(x.limite)} · em uso ${brl(usado)} · livre ${brl(r2(x.limite - usado))}"><i style="width:${pct}%" class="${pct >= 80 ? 'alto' : ''}"></i></div>
-          <small class="${pct >= 80 ? 'alerta' : ''}">limite ${pct}% usado · livre ${brl(r2(x.limite - usado))}</small>` : ''}</div>`;
-      }).join('')}</aside>
+        const livre = x.limite ? r2(x.limite - usado) : null;
+        const mil = v => 'R$ ' + (Math.abs(v) >= 1000 ? (v / 1000).toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + ' mil' : v.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+        return `<div class="cx-cartao ${x.id === cartaoSel ? 'on' : ''}" data-c="${x.id}" title="Fecha dia ${x.fech} · vence dia ${x.venc}${x.limite ? ' · limite ' + brl(x.limite) + ' · em uso ' + brl(usado) : ''}">
+          <div class="cx-topo"><b>${esc(x.nome)}</b><small>vence ${ab ? dia(ab).slice(0, 5) : '—'}</small></div>
+          <div class="cx-v">${brl(tot)}</div>
+          ${pct !== null ? `<div class="cx-lim"><i style="width:${pct}%" class="${pct >= 80 ? 'alto' : ''}"></i></div><small class="${pct >= 80 ? 'alerta' : ''}">${pct}% do limite · livre ${mil(livre)}</small>` : ''}
+          ${x.conta ? '' : '<small class="alerta">sem conta no Conta Azul</small>'}</div>`;
+      }).join('')}</div>
       <section>
         <div class="cx-painel">
           <div class="cx-faturas">${lista.map(v => `<button data-f="${v}" class="${v === vencSel ? 'on' : ''}">${mesAno(v)} · ${dia(v).slice(0, 5)}${v === aberta ? ' · aberta' : ''}</button>`).join('')}</div>
