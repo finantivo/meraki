@@ -238,6 +238,7 @@ el('abas').onclick = ev => { const b = ev.target.closest('[data-a]'); if (b) abr
 .cx-acoes .cx-dir { margin-left: auto; }
 table.cx-t td, table.cx-t th { padding: 5px 7px; font-size: 12.5px; }
 table.cx-t tr:hover td { background: #faf8f4; }
+table.cx-t th.c, table.cx-t td.c { text-align: center; white-space: nowrap; }
 .cx-st { font-size: 10.5px; padding: 1px 7px; border-radius: 999px; white-space: nowrap; display: inline-block; }
 .cx-st.v { background: var(--suave); color: #2b4a40; } .cx-st.a { background: #faeeda; color: #633806; } .cx-st.n { background: #f1efe8; color: #5f5e5a; }
 .cx-st.r { background: #fbe3d6; color: #8a3b0c; }
@@ -659,7 +660,7 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
   function tabelaLancamentos(S) {
     if (!S.L.length) return '<div class="cx-vazio">Nenhum lançamento nesta fatura.</div>';
     const forns = new Set(C.catalogo.fornecedores);
-    return `<table class="cx-t"><thead><tr><th>Data</th><th>Fornecedor</th><th>Descrição</th><th>Projeto</th><th>Categoria</th><th class="v">Valor</th><th>Fatura</th><th>Conta Azul</th><th></th></tr></thead><tbody id="cxLinhas">
+    return `<table class="cx-t"><thead><tr><th>Data</th><th>Fornecedor</th><th>Descrição</th><th>Projeto</th><th>Categoria</th><th class="c">Valor</th><th class="c">Fatura</th><th class="c">Conta Azul</th><th class="c">Ações</th></tr></thead><tbody id="cxLinhas">
       ${S.L.map(l => {
         const e = S.est[l.id];
         const stF = e.fatura ? `<span class="cx-st v" title="${esc(e.fatura.map(i => i.desc + ' ' + brl(i.valor)).join(' + '))}">confere${e.fatura.length > 1 ? ' (' + e.fatura.length + ' linhas)' : ''}</span>` : S.F.total != null ? '<span class="cx-st r">não está na fatura</span>' : '<span class="cx-st n">aguardando</span>';
@@ -667,18 +668,18 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
           : e.fatura ? '<span class="cx-st a">pronto para enviar</span>' + (!forns.has(l.fornecedor) && C.catalogo.fornecedores.length ? ' <span class="cx-st n">fornecedor novo</span>' : '') : '<span class="cx-st n">—</span>';
         const trava = !!(l.caId);
         return `<tr><td>${dia(l.data)}</td><td>${esc(l.fornecedor)}</td><td>${esc(l.descricao)}${l.parcela && l.descricao.indexOf(l.parcela) < 0 ? ' <span class="muted">' + esc(l.parcela) + '</span>' : ''}</td>
-          <td>${esc(rotuloCentro(l.centro))}</td><td class="muted">${esc(l.categoria)}</td><td class="v ${l.valor < 0 ? 'neg' : ''}">${brl(l.valor)}</td><td>${stF}</td><td>${stC}</td>
-          <td>${trava ? '' : `<span class="cx-lk" data-ed="${l.id}">editar</span> · <span class="cx-lk neg" data-rm="${l.id}">excluir</span>`}</td></tr>`;
+          <td>${esc(rotuloCentro(l.centro))}</td><td class="muted">${esc(l.categoria)}</td><td class="c ${l.valor < 0 ? 'neg' : ''}">${brl(l.valor)}</td><td class="c">${stF}</td><td class="c">${stC}</td>
+          <td class="c">${trava ? '' : `<span class="cx-lk" data-ed="${l.id}">editar</span> · <span class="cx-lk neg" data-rm="${l.id}">excluir</span>`}</td></tr>`;
       }).join('')}</tbody></table>`;
   }
 
   function tabelaSoFatura(S) {
     return `<h3 style="margin-top:18px">Na fatura e ainda não lançado (${S.soFatura.length})</h3>
-      <table class="cx-t"><thead><tr><th>Data</th><th>Texto na fatura</th><th>Sugestão</th><th>Projeto</th><th class="v">Valor</th><th></th></tr></thead><tbody id="cxSoFat">
+      <table class="cx-t"><thead><tr><th>Data</th><th>Texto na fatura</th><th>Sugestão</th><th>Projeto</th><th class="c">Valor</th><th class="c">Ações</th></tr></thead><tbody id="cxSoFat">
       ${S.soFatura.map((s, i) => `<tr><td>${dia(s.data)}</td><td>${esc(s.item.desc)}${s.item.cartao ? ' <span class="muted">' + esc(String(s.item.cartao).slice(0, 14)) + '</span>' : ''}</td>
         <td>${s.fornecedor ? esc(s.fornecedor) + (s.categoria ? ' <span class="muted">· ' + esc(s.categoria) + '</span>' : '') : '<span class="muted">—</span>'}</td>
         <td>${s.centro ? esc(rotuloCentro(s.centro)) + (s.metaProj ? ' <span class="cx-st v">Meta</span>' : '') : '<span class="muted">—</span>'}</td>
-        <td class="v ${s.valor < 0 ? 'neg' : ''}">${brl(s.valor)}</td><td><span class="cx-lk" data-pf="${i}">lançar…</span></td></tr>`).join('')}</tbody></table>`;
+        <td class="c ${s.valor < 0 ? 'neg' : ''}">${brl(s.valor)}</td><td class="c"><span class="cx-lk" data-pf="${i}">lançar…</span></td></tr>`).join('')}</tbody></table>`;
   }
 
   function ligarFaturas(S, prontas, enviaveis) {
