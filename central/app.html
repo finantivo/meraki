@@ -239,6 +239,9 @@ el('abas').onclick = ev => { const b = ev.target.closest('[data-a]'); if (b) abr
 table.cx-t td, table.cx-t th { padding: 5px 7px; font-size: 12.5px; }
 table.cx-t tr:hover td { background: #faf8f4; }
 table.cx-t th.c, table.cx-t td.c { text-align: center; white-space: nowrap; }
+.cx-lim { height: 5px; background: var(--sup2); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+.cx-lim i { display: block; height: 100%; background: var(--verde); } .cx-lim i.alto { background: var(--neg); }
+.cx-check { justify-content: flex-end; } .cx-check input { width: 18px; height: 18px; margin: 8px 0; }
 .cx-filtro { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 10px; }
 .cx-filtro select, .cx-filtro input { min-width: 150px; }
 .cx-filtro .cx-lk { margin-left: 4px; }
@@ -348,6 +351,7 @@ function lerFatura(linhas) {
     if ((m = txt.match(/Vencimento:\s*(\d{2}\/\d{2}\/\d{4})/))) r.venc = dataISO(m[1]);
     if ((m = txt.match(/Total desta fatura\s*([\d.]+,\d{2})/))) r.total = numBR(m[1]);
     if ((m = txt.match(/Cartão \d{4}\.X{4}\.X{4}\.(\d{4})/))) r.final = m[1];
+    if ((m = txt.match(/Limite total de crédito\s+([\d.]+,\d{2})/))) r.limite = numBR(m[1]);
     let secao = '', portador = '', ultData = '';
     linhas.forEach((l, i) => {
       if (/^Pagamentos efetuados/.test(l)) { secao = 'pagamentos'; return; }
@@ -459,6 +463,13 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     return partes;
   }
 
+  // fatura seguinte do mesmo cartão (mesmo dia de vencimento, um mês depois)
+  function proximaFatura(venc) {
+    const [a, m, d] = venc.split('-').map(Number), t = a * 12 + m;
+    return Math.floor(t / 12) + '-' + String(t % 12 + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+  }
+  const assinaturaAtiva = id => (C.base.assinaturas || []).some(a => a.id === id && a.ativo);
+
   // centros de custo de um lançamento do Conta Azul → projeto da central
   function centroDoCA(partes) {
     const ps = new Set(), lados = {};
@@ -543,7 +554,13 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     });
     L.forEach(l => { if (l.caId && !est[l.id].ca) est[l.id].ca = 'enviado'; });
     const meta = sugestoesMeta(cid);
-    const soFatura = mf.sobraB.map(j => sugestao(itensF[j], cid, venc, meta));
+    const sugestoes = mf.sobraB.map(j => sugestao(itensF[j], cid, venc, meta));
+    L.forEach(l => {
+      if (est[l.id].fatura) return;
+      const s = sugestoes.find(s => !s.usado && s.fornecedor && semAc(s.fornecedor) === semAc(l.fornecedor) && dias(s.data, l.data) <= 45);
+      if (s) { s.usado = true; est[l.id].sugere = s.item; }
+    });
+    const soFatura = sugestoes.filter(s => !s.usado);
     return {L, F, itensF, CA, est, soFatura, anulados: mf.anulados.map(j => itensF[j]), caSobra: mc.sobraB.map(j => CAr[j]),
       totL: r2(L.reduce((s, l) => s + l.valor, 0)), totCA: r2(CA.reduce((s, x) => s + x.valor, 0))};
   }
@@ -598,13 +615,19 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     const S = situacao(cartaoSel, vencSel), c = cartao(cartaoSel);
     const enviaveis = S.L.filter(l => S.est[l.id].fatura && (!S.est[l.id].ca || S.est[l.id].ca.ajustar) && l.valor > 0);
     const prontas = S.soFatura.filter(s => s.pronta);
+    const naoVieram = S.F.total != null ? S.L.filter(l => !S.est[l.id].fatura && !S.est[l.id].sugere && !l.caId) : [];
     const kpiFat = S.F.total != null ? brl(S.F.total) : '—';
     const difF = S.F.total != null ? r2(S.totL - S.F.total) : null, difC = r2(S.totCA - S.totL);
     el('cxCorpo').innerHTML = `<div class="cx-grade">
       <aside class="cx-cartoes">${ativos.map(x => {
         const ab = vencDe(x.id, hoje()), tot = r2(C.base.lancamentos.filter(l => l.cartao === x.id && l.venc === ab).reduce((s, l) => s + l.valor, 0));
+        // limite: tudo o que ainda vai vencer (fatura aberta, próximas e parcelas futuras) ocupa o limite
+        const usado = r2(C.base.lancamentos.filter(l => l.cartao === x.id && l.venc >= ab).reduce((s, l) => s + l.valor, 0));
+        const pct = x.limite ? Math.min(100, Math.round(usado / x.limite * 100)) : null;
         return `<div class="cx-cartao ${x.id === cartaoSel ? 'on' : ''}" data-c="${x.id}"><b>${esc(x.nome)}</b><small>fecha dia ${x.fech} · vence dia ${x.venc}</small>
-          <div class="cx-v">${brl(tot)}</div><small>fatura de ${ab ? dia(ab).slice(0, 5) : '—'}${x.conta ? '' : ' · <span class="alerta">sem conta no Conta Azul</span>'}</small></div>`;
+          <div class="cx-v">${brl(tot)}</div><small>fatura de ${ab ? dia(ab).slice(0, 5) : '—'}${x.conta ? '' : ' · <span class="alerta">sem conta no Conta Azul</span>'}</small>
+          ${pct !== null ? `<div class="cx-lim" title="Limite ${brl(x.limite)} · em uso ${brl(usado)} · livre ${brl(r2(x.limite - usado))}"><i style="width:${pct}%" class="${pct >= 80 ? 'alto' : ''}"></i></div>
+          <small class="${pct >= 80 ? 'alerta' : ''}">limite ${pct}% usado · livre ${brl(r2(x.limite - usado))}</small>` : ''}</div>`;
       }).join('')}</aside>
       <section>
         <div class="cx-painel">
@@ -620,6 +643,7 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
           <div class="cx-acoes">
             <button id="cxPdf">Importar PDF (fatura ou relatório do Meta)</button>
             ${prontas.length ? `<button id="cxSugeridos">Lançar ${prontas.length} da fatura com sugestão completa</button>` : ''}
+            ${naoVieram.length ? `<button id="cxProxima">Passar ${naoVieram.length} que não vieram para a próxima fatura</button>` : ''}
             <button class="pri cx-dir" id="cxEnviar" ${enviaveis.length ? '' : 'disabled'}>Enviar ${enviaveis.length} conferidos ao Conta Azul</button>
           </div>
           <div class="msg" id="cxMsg"></div>
@@ -629,7 +653,7 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
           ${S.caSobra.length ? `<details class="cx-det"><summary>No Conta Azul e não na central (${S.caSobra.length} · ${brl(r2(S.caSobra.reduce((s, x) => s + x.valor, 0)))})</summary><table class="cx-t">${S.caSobra.map(i => `<tr><td>${dia(i.comp)}</td><td>${esc(i.quem || '')}</td><td>${esc(i.desc || '')}</td><td class="muted">${esc(rotuloCentro(centroDoCA(i.partes)))}</td><td class="v">${brl(i.valor)}</td><td><span class="cx-lk" data-tz="${i.id}">trazer para a central</span></td></tr>`).join('')}</table></details>` : ''}
         </div>
       </section></div>`;
-    ligarFaturas(S, prontas, enviaveis);
+    ligarFaturas(S, prontas, enviaveis, naoVieram);
   }
 
   function opcoesCentro(sel) {
@@ -654,6 +678,7 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
       <label>Categoria<select id="fCat"><option value=""></option>${cats.map(x => `<option ${x === l.categoria ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
       <label>Descrição<input id="fDesc" value="${esc(l.descricao || '')}"></label>
       <label>Parcela<input id="fParc" placeholder="ex.: 3/12" value="${esc(l.parcela || '')}"></label>
+      <label class="cx-check"><span>Todo mês</span><input type="checkbox" id="fMes" ${l.assinatura && assinaturaAtiva(l.assinatura) ? 'checked' : ''}></label>
       <label>Fatura<select id="fVenc"></select></label>
       <div class="cx-botoes"><button class="pri" id="fSalvar">${editando ? 'Salvar' : 'Adicionar'}</button>${editando || prefill ? '<button id="fCancelar">Cancelar</button>' : ''}</div>
     </div>
@@ -684,13 +709,16 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     <table class="cx-t"><thead><tr><th>Data</th><th>Fornecedor</th><th>Descrição</th><th>Projeto</th><th>Categoria</th><th class="c">Valor</th><th class="c">Fatura</th><th class="c">Conta Azul</th><th class="c">Ações</th></tr></thead><tbody id="cxLinhas">
       ${L.map(l => {
         const e = S.est[l.id];
-        const stF = e.fatura ? `<span class="cx-st v" title="${esc(e.fatura.map(i => i.desc + ' ' + brl(i.valor)).join(' + '))}">confere${e.fatura.length > 1 ? ' (' + e.fatura.length + ' linhas)' : ''}</span>` : S.F.total != null ? '<span class="cx-st r">não está na fatura</span>' : '<span class="cx-st n">aguardando</span>';
+        const stF = e.fatura ? `<span class="cx-st v" title="${esc(e.fatura.map(i => i.desc + ' ' + brl(i.valor)).join(' + '))}">confere${e.fatura.length > 1 ? ' (' + e.fatura.length + ' linhas)' : ''}</span>`
+          : e.sugere ? `<span class="cx-st r" title="${esc(e.sugere.desc)}">fatura tem ${brl(e.sugere.valor)}</span>`
+          : S.F.total != null ? '<span class="cx-st r">não está na fatura</span>' : '<span class="cx-st n">aguardando</span>';
         const stC = e.ca === 'enviado' ? '<span class="cx-st v">enviado</span>' : e.ca && e.ca.ajustar ? `<span class="cx-st r" title="${esc(e.ca.ajustar.desc)}">Conta Azul tem ${brl(e.ca.ajustar.valor)}</span>` : e.ca ? `<span class="cx-st v" title="${esc(e.ca.map(x => x.desc + ' ' + brl(x.valor)).join(' + '))}">lançado</span>`
           : e.fatura ? '<span class="cx-st a">pronto para enviar</span>' + (!forns.has(l.fornecedor) && C.catalogo.fornecedores.length ? ' <span class="cx-st n">fornecedor novo</span>' : '') : '<span class="cx-st n">—</span>';
         const trava = !!(l.caId);
-        return `<tr><td>${dia(l.data)}</td><td>${esc(l.fornecedor)}</td><td>${esc(l.descricao)}${l.parcela && l.descricao.indexOf(l.parcela) < 0 ? ' <span class="muted">' + esc(l.parcela) + '</span>' : ''}</td>
+        const extra = trava ? '' : e.sugere ? `<br><span class="cx-lk" data-uv="${l.id}">usar valor da fatura</span>` : (S.F.total != null && !e.fatura ? `<br><span class="cx-lk" data-px="${l.id}">próxima fatura</span>` : '');
+        return `<tr><td>${dia(l.data)}</td><td>${esc(l.fornecedor)}</td><td>${esc(l.descricao)}${l.parcela && l.descricao.indexOf(l.parcela) < 0 ? ' <span class="muted">' + esc(l.parcela) + '</span>' : ''}${l.assinatura && assinaturaAtiva(l.assinatura) ? ' <span class="cx-st n">todo mês</span>' : ''}</td>
           <td>${esc(rotuloCentro(l.centro))}</td><td class="muted">${esc(l.categoria)}</td><td class="c ${l.valor < 0 ? 'neg' : ''}">${brl(l.valor)}</td><td class="c">${stF}</td><td class="c">${stC}</td>
-          <td class="c">${trava ? '' : `<span class="cx-lk" data-ed="${l.id}">editar</span> · <span class="cx-lk neg" data-rm="${l.id}">excluir</span>`}</td></tr>`;
+          <td class="c">${trava ? '' : `<span class="cx-lk" data-ed="${l.id}">editar</span> · <span class="cx-lk neg" data-rm="${l.id}">excluir</span>`}${extra}</td></tr>`;
       }).join('')}
       <tr class="cx-total"><td colspan="5">${filtrando ? 'Total do filtro' : 'Total'} · ${L.length} ${L.length === 1 ? 'lançamento' : 'lançamentos'}</td><td class="c">${brl(r2(L.reduce((s, l) => s + l.valor, 0)))}</td><td colspan="3"></td></tr>
       </tbody></table></div>`;
@@ -707,8 +735,10 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     if (limpar) limpar.onclick = () => { Object.keys(filtro).forEach(k => filtro[k] = ''); redesenhar(); };
     const linhas = el('cxLinhas');
     if (linhas) linhas.onclick = ev => {
-      const ed = ev.target.closest('[data-ed]'), rm = ev.target.closest('[data-rm]');
+      const ed = ev.target.closest('[data-ed]'), rm = ev.target.closest('[data-rm]'), uv = ev.target.closest('[data-uv]'), px = ev.target.closest('[data-px]');
       if (ed) { editando = C.base.lancamentos.find(l => l.id === ed.dataset.ed); prefill = null; desenharCartoes(); el('fValor').focus(); }
+      if (uv) { const l = S.L.find(x => x.id === uv.dataset.uv), it = S.est[l.id].sugere; rodar('salvarLancamentos', [Object.assign({}, l, {valor: it.valor, data: it.data})]).then(carregarCartoes).catch(erro); }
+      if (px) { const l = S.L.find(x => x.id === px.dataset.px); rodar('salvarLancamentos', [Object.assign({}, l, {venc: proximaFatura(l.venc)})]).then(carregarCartoes).catch(erro); }
       if (rm && confirm('Excluir este lançamento da central?')) rodar('excluirLancamentos', [rm.dataset.rm]).then(carregarCartoes).catch(erro);
     };
   }
@@ -722,7 +752,7 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
         <td class="c ${s.valor < 0 ? 'neg' : ''}">${brl(s.valor)}</td><td class="c"><span class="cx-lk" data-pf="${i}">lançar…</span></td></tr>`).join('')}</tbody></table>`;
   }
 
-  function ligarFaturas(S, prontas, enviaveis) {
+  function ligarFaturas(S, prontas, enviaveis, naoVieram) {
     el('cxCorpo').querySelector('.cx-cartoes').onclick = ev => { const x = ev.target.closest('[data-c]'); if (x) { cartaoSel = x.dataset.c; vencSel = null; editando = prefill = null; desenharCartoes(); } };
     el('cxCorpo').querySelector('.cx-faturas').onclick = ev => { const x = ev.target.closest('[data-f]'); if (x) { vencSel = x.dataset.f; desenharCartoes(); } };
     ligarForm(S);
@@ -730,6 +760,10 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     const sf = el('cxSoFat');
     if (sf) sf.onclick = ev => { const x = ev.target.closest('[data-pf]'); if (x) { prefill = S.soFatura[Number(x.dataset.pf)]; editando = null; desenharCartoes(); el('cxForm').scrollIntoView({block: 'center'}); } };
     el('cxPdf').onclick = () => el('cxArquivo').click();
+    if (el('cxProxima')) el('cxProxima').onclick = () => {
+      if (!confirm(`Passar ${naoVieram.length} lançamentos que não vieram nesta fatura para a fatura seguinte (${dia(proximaFatura(vencSel))})?`)) return;
+      rodar('salvarLancamentos', naoVieram.map(l => Object.assign({}, l, {venc: proximaFatura(l.venc)}))).then(carregarCartoes).catch(erro);
+    };
     if (el('cxSugeridos')) el('cxSugeridos').onclick = () => {
       const tot = r2(prontas.reduce((s, p) => s + p.valor, 0));
       if (!confirm(`Lançar na central ${prontas.length} itens da fatura (${brl(tot)}) com o fornecedor, categoria e projeto sugeridos?`)) return;
@@ -781,9 +815,14 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     f('fSalvar').onclick = () => {
       const l = {id: editando ? editando.id : undefined, cartao: cartaoSel, venc: f('fVenc').value, data: f('fData').value, valor: Number(f('fValor').value),
         fornecedor: f('fForn').value.trim(), categoria: f('fCat').value, descricao: f('fDesc').value.trim(), parcela: f('fParc').value.trim(),
-        centro: f('fCentro').value, origem: editando ? editando.origem : prefill ? 'fatura' : 'central', padrao: prefill ? prefill.chave : undefined};
+        centro: f('fCentro').value, origem: editando ? editando.origem : prefill ? 'fatura' : 'central', padrao: prefill ? prefill.chave : undefined,
+        todoMes: f('fMes').checked ? true : (editando && editando.assinatura ? false : undefined)};
       const falta = [!l.data && 'data', !l.valor && 'valor', !l.fornecedor && 'fornecedor', !l.centro && 'projeto', !l.categoria && 'categoria', !l.venc && 'fatura'].filter(Boolean);
       if (falta.length) { f('fDica').innerHTML = '<span class="alerta">Falta: ' + falta.join(', ') + '.</span>'; return; }
+      if (l.todoMes && l.parcela) { f('fDica').innerHTML = '<span class="alerta">Compra parcelada já gera as próximas parcelas; desmarque "Todo mês".</span>'; return; }
+      // mesmo fornecedor, mesmo valor, mesma data, mesmo cartão: provavelmente lançado duas vezes
+      const dup = !editando && C.base.lancamentos.find(x => x.cartao === l.cartao && x.data === l.data && v2(x.valor - l.valor) && semAc(x.fornecedor) === semAc(l.fornecedor));
+      if (dup && !confirm(`Já existe ${l.fornecedor} de ${brl(l.valor)} em ${dia(l.data)} neste cartão (${dup.descricao || 'sem descrição'} · ${rotuloCentro(dup.centro)}). Lançar de novo?`)) return;
       f('fSalvar').disabled = true;
       rodar('salvarLancamentos', [l]).then(() => {
         const manter = !editando && !prefill ? {data: l.data, fornecedor: l.fornecedor, categoria: l.categoria, descricao: l.descricao, centro: l.centro} : null;
@@ -877,7 +916,7 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
       m.querySelector('#mOk').onclick = () => {
         const cid = m.querySelector('#mCartao').value, venc = m.querySelector('#mVenc').value;
         m.querySelector('#mOk').disabled = true;
-        rodar('salvarFatura', {cartao: cid, venc, total: f.total, tipo: f.tipo, final: f.final, itens: f.itens, arquivo: nome})
+        rodar('salvarFatura', {cartao: cid, venc, total: f.total, tipo: f.tipo, final: f.final, itens: f.itens, arquivo: nome, limite: f.limite || null})
           .then(() => { m.remove(); cartaoSel = cid; vencSel = venc; return carregarCartoes(); }).then(ok).catch(e => { alert(e.message || e); ok(); });
       };
     });
@@ -931,17 +970,24 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     const selCentro = (v, cls) => `<select class="${cls}"><option value=""></option>${[...new Set(centros.concat(v ? [v] : []))].map(c => `<option ${c === v ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
     const linhaCartao = c => `<tr><td><input class="kNome" value="${esc(c.nome)}"></td><td><input class="kFin" value="${esc((c.finais || []).join(', '))}"></td>
       <td><input class="kFech" type="number" min="1" max="31" value="${c.fech || ''}"></td><td><input class="kVenc" type="number" min="1" max="31" value="${c.venc || ''}"></td>
+      <td><input class="kLim" type="number" step="0.01" value="${c.limite || ''}"></td>
       <td><select class="kConta"><option value="">— nenhuma —</option>${contas.map(x => `<option value="${x.id}" ${x.id === c.conta ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}</select></td>
       <td><input type="checkbox" class="kAtivo" ${c.ativo ? 'checked' : ''}></td><td class="muted kId">${esc(c.id)}</td></tr>`;
     const linhaProj = p => `<tr><td><input class="pNome" value="${esc(p.nome)}"></td><td>${selCentro(p.meraki, 'pMer')}</td><td>${selCentro(p.expert, 'pExp')}</td>
       <td><input class="pParte" type="number" min="0" max="100" value="${p.parte}"></td><td><input class="pMeta" value="${esc((p.meta || []).join('; '))}"></td><td><input type="checkbox" class="pAtivo" ${p.ativo ? 'checked' : ''}></td></tr>`;
     const regras = Object.keys(B.regras).sort((a, b) => a.localeCompare(b, 'pt'));
     el('cxCorpo').innerHTML = `<div class="cx-painel cx-cfg"><h3>Cartões</h3>
-        <table class="cx-t"><thead><tr><th>Nome</th><th>Finais (separados por vírgula)</th><th>Fecha dia</th><th>Vence dia</th><th>Conta no Conta Azul</th><th>Ativo</th><th></th></tr></thead><tbody id="kCartoes">${B.cartoes.map(linhaCartao).join('')}</tbody></table>
+        <table class="cx-t"><thead><tr><th>Nome</th><th>Finais (separados por vírgula)</th><th>Fecha dia</th><th>Vence dia</th><th>Limite</th><th>Conta no Conta Azul</th><th>Ativo</th><th></th></tr></thead><tbody id="kCartoes">${B.cartoes.map(linhaCartao).join('')}</tbody></table>
         <div class="acoes" style="margin-top:8px"><button id="kAdd">Adicionar cartão</button></div></div>
       <div class="cx-painel cx-cfg"><h3>Projetos</h3>
         <table class="cx-t"><thead><tr><th>Nome</th><th>Centro lado Meraki</th><th>Centro lado expert</th><th>% Meraki</th><th>Negócios no Meta</th><th>Ativo</th></tr></thead><tbody id="kProjs">${B.projetos.map(linhaProj).join('')}</tbody></table>
         <div class="acoes" style="margin-top:8px"><button id="pAdd">Adicionar projeto</button></div></div>
+      <div class="cx-painel cx-cfg"><h3>Lançados todo mês (${(B.assinaturas || []).filter(a => a.ativo).length})</h3>
+        <table class="cx-t"><thead><tr><th>Fornecedor</th><th>Cartão</th><th>Descrição</th><th>Projeto</th><th>Dia da compra</th><th>Valor</th><th>Por mês</th><th>Ativo</th></tr></thead><tbody id="kAss">
+        ${(B.assinaturas || []).map(a => `<tr data-a="${a.id}"><td>${esc(a.fornecedor)}</td><td class="muted">${esc(cartao(a.cartao).nome || a.cartao)}</td><td class="muted">${esc(a.descricao)}</td><td class="muted">${esc(rotuloCentro(a.centro))}</td>
+          <td><input class="aDia" type="number" min="1" max="31" value="${a.dia}"></td><td><input class="aVal" type="number" step="0.01" value="${a.valor}"></td>
+          <td><input class="aQtd" type="number" min="1" max="10" value="${a.qtd || 1}"></td><td><input type="checkbox" class="aAtivo" ${a.ativo ? 'checked' : ''}></td></tr>`).join('')}
+        </tbody></table></div>
       <div class="cx-painel cx-cfg"><h3>Fornecedores conhecidos (${regras.length})</h3>
         <table class="cx-t"><thead><tr><th>Fornecedor</th><th>Categoria</th><th>Descrição</th><th>Projeto padrão</th><th></th></tr></thead><tbody id="kRegras">
         ${regras.map(f => { const r = B.regras[f]; return `<tr data-f="${esc(f)}"><td>${esc(f)}${C.catalogo.fornecedores.length && !C.catalogo.fornecedores.includes(f) ? ' <span class="cx-st n">novo</span>' : ''}</td><td class="muted">${esc(r.categoria || '')}</td><td class="muted">${esc(r.descricao || '')}</td><td class="muted">${r.centro ? esc(rotuloCentro(r.centro)) : ''}</td><td><span class="cx-lk neg" data-rmr="${esc(f)}">esquecer</span></td></tr>`; }).join('')}
@@ -956,7 +1002,7 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
         const q = s => tr.querySelector(s), nome = q('.kNome').value.trim();
         const finais = q('.kFin').value.split(/[,;\s]+/).filter(x => /^\d{4}$/.test(x));
         return {id: q('.kId').textContent || 'c' + (finais[0] || semAc(nome).replace(/\W/g, '')), nome, finais, fech: Number(q('.kFech').value), venc: Number(q('.kVenc').value),
-          conta: q('.kConta').value || null, ativo: q('.kAtivo').checked};
+          limite: Number(q('.kLim').value) || null, conta: q('.kConta').value || null, ativo: q('.kAtivo').checked};
       }).filter(c => c.nome);
       const projetos = [...el('kProjs').rows].map(tr => {
         const q = s => tr.querySelector(s);
@@ -965,7 +1011,9 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
       }).filter(p => p.nome);
       if (cartoes.some(c => !c.fech || !c.venc)) { el('kMsg').innerHTML = '<span class="alerta">Preencha o dia de fechamento e de vencimento de todos os cartões.</span>'; return; }
       if (projetos.some(p => !p.meraki || !p.expert)) { el('kMsg').innerHTML = '<span class="alerta">Escolha os dois centros de custo de cada projeto.</span>'; return; }
-      rodar('salvarConfigCartoes', {cartoes, projetos, regras: regrasNovas}).then(() => { el('kMsg').innerHTML = '<span class="ok">Salvo ✓</span>'; return carregarCartoes(); }).catch(e => el('kMsg').innerHTML = '<span class="alerta">' + esc(e.message || e) + '</span>');
+      const assinaturas = (B.assinaturas || []).map(a => { const tr = el('kAss').querySelector(`[data-a="${a.id}"]`), q = s => tr.querySelector(s);
+        return Object.assign({}, a, {dia: Number(q('.aDia').value) || a.dia, valor: Number(q('.aVal').value) || a.valor, qtd: Number(q('.aQtd').value) || 1, ativo: q('.aAtivo').checked}); });
+      rodar('salvarConfigCartoes', {cartoes, projetos, regras: regrasNovas, assinaturas}).then(() => { el('kMsg').innerHTML = '<span class="ok">Salvo ✓</span>'; return carregarCartoes(); }).catch(e => el('kMsg').innerHTML = '<span class="alerta">' + esc(e.message || e) + '</span>');
     };
   }
 
