@@ -95,7 +95,7 @@ const somaSel = (e, tipo) => itensDe(e, tipo).filter(i => marcados[i.key]).reduc
 function desenhar() {
   el('lista').innerHTML = D.experts.map(e => {
     const n = e.fila.length + e.manuais.length;
-    return `<div class="exp ${e.nome === atual ? 'on' : ''}" data-e="${esc(e.nome)}"><b>${esc(e.nome)}</b><small>${n ? n + ' itens na fila' : 'nada pendente'} · ${esc(e.status)}</small></div>`;
+    return `<div class="exp ${e.nome === atual ? 'on' : ''}" data-e="${esc(e.nome)}"><b>${esc(e.nome)}</b><small>${n ? n + (n === 1 ? ' item' : ' itens') + ' na fila' : 'nada pendente'} · ${esc(e.status)}</small></div>`;
   }).join('') + `<div class="exp ${atual === '#hist' ? 'on' : ''}" data-e="#hist"><b>Notas emitidas</b><small>${D.historico.length} no histórico</small></div>`;
   if (atual === '#hist') return desenharHistorico();
   const e = D.experts.find(x => x.nome === atual);
@@ -223,10 +223,20 @@ function ligar(e) {
 
 function desenharHistorico() {
   const linhas = D.historico.map(n => `<tr><td><b>${n.tipo} ${n.numero}</b></td><td>${esc(n.expert)}</td><td>${dia(n.emissao)}</td><td>${esc(n.referencia || '')}</td>
-    <td class="v">${brl(n.total)}</td><td>${n.pdfUrl ? `<a href="${n.pdfUrl}" target="_blank">PDF</a>` : ''}</td>
+    <td class="v">${brl(n.total)}</td><td>${n.pdfId || n.link ? `<a href="#" data-via="${n.id}">2ª via</a>` : ''}</td>
     <td>${n.cancelada ? '<span class="tag">cancelada</span>' : `<select data-id="${n.id}">${['emitida', 'enviada', 'paga', 'cancelada'].map(s => `<option ${s === n.status ? 'selected' : ''}>${s}</option>`).join('')}</select>`}</td></tr>`).join('');
   el('conteudo').innerHTML = `<div class="cartao"><h2>Notas emitidas</h2>${linhas ? `<table><thead><tr><th>Nota</th><th>Expert</th><th>Emissão</th><th>Referência</th><th class="v">Total</th><th></th><th>Situação</th></tr></thead><tbody id="hist">${linhas}</tbody></table>` : '<div class="vazio">Nenhuma nota emitida pela central ainda.</div>'}</div>`;
   const h = el('hist');
+  // 2ª via: baixa de novo o PDF (ou abre o arquivo que a Lu fez antes da central)
+  if (h) h.onclick = ev => {
+    const a = ev.target.closest('[data-via]'); if (!a) return;
+    ev.preventDefault(); a.textContent = 'abrindo…';
+    rodar('segundaVia', a.dataset.via).then(r => {
+      a.textContent = '2ª via';
+      if (r.link) window.open(r.link, '_blank');
+      else baixarNota(r, []);
+    }).catch(e => { a.textContent = '2ª via'; alert(e.message || e); });
+  };
   if (h) h.onchange = ev => {
     const s = ev.target;
     if (s.value === 'cancelada' && !confirm('Cancelar a nota devolve os itens para a fila. Continuar?')) { carregar(); return; }
