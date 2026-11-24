@@ -469,6 +469,11 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     return Math.floor(t / 12) + '-' + String(t % 12 + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
   }
   const assinaturaAtiva = id => (C.base.assinaturas || []).some(a => a.id === id && a.ativo);
+  // fornecedor que vai agrupado para o Conta Azul (padrão: Facebook; muda em Configurar)
+  const agrupa = f => { const r = C.base.regras[f] || {}; return r.agrupar !== undefined ? !!r.agrupar : semAc(f) === 'facebook'; };
+  // IOF de compra do Facebook vai junto no lançamento do Facebook (como a Lu fazia no Conta Azul)
+  const fornGrupo = l => semAc(l.fornecedor) === 'iof' && /facebook|facebk|meta/.test(semAc(l.descricao)) ? 'Facebook' : l.fornecedor;
+  const tipoAgrupado = desc => /\bapi\b/.test(semAc(desc)) ? 'api' : 'geral';
 
   // centros de custo de um lançamento do Conta Azul → projeto da central
   function centroDoCA(partes) {
@@ -533,8 +538,8 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     const mf = casar(L, itensF, 31);
     mf.pares.forEach(([ia, ib]) => ia.forEach(i => est[L[i].id].fatura = ib.map(j => itensF[j])));
     // Conta Azul: primeiro pelo que a central mesmo enviou, depois pelo valor
-    const Lr = L.filter(l => !(l.caParcela && CA.some(x => x.id === l.caParcela)));
-    const CAr = CA.filter(x => !L.some(l => l.caParcela === x.id));
+    let Lr = L.filter(l => !(l.caParcela && CA.some(x => x.id === l.caParcela)));
+    let CAr = CA.filter(x => !L.some(l => l.caParcela === x.id));
     // ligado a um lançamento do Conta Azul: se o valor mudou na central, o envio corrige o valor lá
     // (vários lançamentos da central podem apontar para o mesmo do Conta Azul, quando lá está agrupado)
     const porParcela = {};
@@ -543,6 +548,39 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
       const x = CA.find(x => x.id === id), ls = porParcela[id], soma = r2(ls.reduce((s, l) => s + l.valor, 0));
       ls.forEach(l => est[l.id].ca = v2(x.valor - soma) ? 'enviado' : ls.length > 1 ? {ajustarGrupo: x, soma, ids: ls.map(l => l.id)} : {ajustar: x});
     });
+    // fornecedores que vão agrupados para o Conta Azul (Facebook): um lançamento por projeto, tipo (tráfego/API) e mês da compra,
+    // como a Lu já fazia; a central guarda cada cobrança (é o que confere com a fatura) e junta só no envio
+    const kG = (forn, centro, desc, data) => semAc(forn) + '|' + projetoDoCentro(centro) + '|' + tipoAgrupado(desc) + '|' + String(data || '').slice(0, 7);
+    // já lançado? confere a soma em camadas: projeto+tipo+mês, depois projeto+mês, depois só projeto
+    // (na planilha antiga nem sempre "API" e "Tráfego Pago" estavam separados)
+    const niveis = [kG, (f, c, d, dt) => kG(f, c, '', dt), (f, c) => kG(f, c, '', '')];
+    niveis.forEach(nk => {
+      const g2 = {};
+      Lr.filter(l => agrupa(fornGrupo(l)) && !est[l.id].ca).forEach(l => { const k = nk(fornGrupo(l), l.centro, l.descricao, l.data); (g2[k] = g2[k] || {L: [], C: []}).L.push(l); });
+      CAr.filter(x => agrupa(x.quem)).forEach(x => { const k = nk(x.quem, centroDoCA(x.partes), x.desc, x.comp); if (g2[k]) g2[k].C.push(x); });
+      Object.values(g2).forEach(g => {
+        if (!g.C.length || !v2(g.L.reduce((s, l) => s + l.valor, 0) - g.C.reduce((s, x) => s + x.valor, 0))) return;
+        g.L.forEach(l => est[l.id].ca = g.C);
+        CAr = CAr.filter(x => !g.C.includes(x));
+      });
+    });
+    const gs = {};
+    Lr.filter(l => agrupa(fornGrupo(l)) && !est[l.id].ca).forEach(l => { const k = kG(fornGrupo(l), l.centro, l.descricao, l.data); (gs[k] = gs[k] || {L: [], C: []}).L.push(l); });
+    CAr.filter(x => agrupa(x.quem)).forEach(x => { const k = kG(x.quem, centroDoCA(x.partes), x.desc, x.comp); if (gs[k]) gs[k].C.push(x); });
+    Object.values(gs).forEach(g => {
+      const soma = r2(g.L.reduce((s, l) => s + l.valor, 0)), somaC = r2(g.C.reduce((s, x) => s + x.valor, 0));
+      if (g.C.length && v2(soma - somaC)) g.L.forEach(l => est[l.id].ca = g.C);
+      else if (g.C.length === 1) g.L.forEach(l => est[l.id].ca = {ajustarGrupo: g.C[0], soma, ids: g.L.map(l => l.id)});
+      else if (g.C.length > 1) g.L.forEach(l => est[l.id].ca = {conflito: g.C});
+      else g.L.forEach(l => est[l.id].grupo = g.L.map(l => l.id));
+      CAr = CAr.filter(x => !g.C.includes(x));
+    });
+    // grupo novo, mas o Conta Azul ainda tem lançamentos desse fornecedor e projeto em outro formato: conferir antes
+    L.filter(l => est[l.id].grupo).forEach(l => {
+      const cs = CAr.filter(x => semAc(x.quem) === semAc(fornGrupo(l)) && projetoDoCentro(centroDoCA(x.partes)) === projetoDoCentro(l.centro));
+      if (cs.length) { est[l.id].ca = {conflito: cs}; delete est[l.id].grupo; }
+    });
+    Lr = Lr.filter(l => !agrupa(fornGrupo(l)));
     const mc = casar(Lr, CAr, 31);
     mc.pares.forEach(([ia, ib]) => ia.forEach(i => est[Lr[i].id].ca = ib.map(j => CAr[j])));
     // o que sobrou dos dois lados soma o mesmo valor: foi lançado no Conta Azul agrupado de outro jeito (não reenviar)
@@ -621,8 +659,9 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     let centro = fornecedor === 'Facebook' ? '' : (regra.centro || '');
     const m = fornecedor === 'Facebook' && meta.find(x => v2(x.valor - it.valor) && dias(x.data, it.data) <= 1);
     if (m && m.projeto) centro = 'P|' + m.projeto + '|d';
+    const descBase = fornecedor === 'Facebook' && /^METAPAY/.test(k) ? 'Facebook - API' : (regra.descricao || '');
     const s = {item: it, chave: k, cartao: cid, venc, data: it.data, valor: it.valor, fornecedor, categoria: regra.categoria || '',
-      descricao: (regra.descricao || '') + (it.parcela && regra.descricao ? ' - ' + it.parcela : ''), parcela: it.parcela || '', centro, metaProj: m && m.projeto};
+      descricao: descBase + (it.parcela && descBase ? ' - ' + it.parcela : ''), parcela: it.parcela || '', centro, metaProj: m && m.projeto};
     s.pronta = !!(s.fornecedor && s.categoria && s.centro && s.valor > 0);
     return s;
   }
@@ -754,6 +793,7 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
         const stC = e.ca === 'enviado' ? '<span class="cx-st v">enviado</span>' : e.ca && e.ca.ajustar ? `<span class="cx-st r" title="${esc(e.ca.ajustar.desc)}">Conta Azul tem ${brl(e.ca.ajustar.valor)}</span>`
           : e.ca && e.ca.ajustarGrupo ? `<span class="cx-st r" title="${esc(e.ca.ajustarGrupo.desc + ' · no envio vira ' + brl(e.ca.soma))}">Conta Azul tem ${brl(e.ca.ajustarGrupo.valor)} no total</span>`
           : e.ca && e.ca.conflito ? `<span class="cx-st r" title="${esc(e.ca.conflito.map(x => x.desc + ' ' + brl(x.valor)).join(' + '))}">conferir no Conta Azul</span>` : e.ca ? `<span class="cx-st v" title="${esc(e.ca.map(x => x.desc + ' ' + brl(x.valor)).join(' + '))}">lançado</span>`
+          : e.fatura && e.grupo && e.grupo.length > 1 ? `<span class="cx-st a" title="vai junto com as outras cobranças do mesmo projeto e mês">pronto · vai agrupado (${e.grupo.length})</span>`
           : e.fatura ? '<span class="cx-st a">pronto para enviar</span>' + (!forns.has(l.fornecedor) && C.catalogo.fornecedores.length ? ' <span class="cx-st n">fornecedor novo</span>' : '') : '<span class="cx-st n">—</span>';
         const trava = !!(l.caId);
         const extra = trava ? '' : e.sugere ? `<br><span class="cx-lk" data-uv="${l.id}">usar valor da fatura</span>` : (S.F.total != null && !e.fatura ? `<br><span class="cx-lk" data-px="${l.id}">próxima fatura</span>` : '');
@@ -901,14 +941,30 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
         ajustes.push({ids: c.ids, x: c.ajustarGrupo, valor: c.soma, nome: (c.ajustarGrupo.desc || l.fornecedor) + ' (' + c.ids.length + ' cobranças)'});
     });
     const lista = listaToda.filter(l => { const c = S.est[l.id].ca || {}; return !c.ajustar && !c.ajustarGrupo; });
-    const ids = lista.map(l => l.id);
+    // agrupados: um item com todas as cobranças (só quando todas conferiram com a fatura); separa se o projeto/divisão for diferente
+    const vistos = new Set(), ids = [];
+    lista.forEach(l => {
+      const g = S.est[l.id].grupo;
+      if (!g || g.length < 2) { ids.push(l.id); return; }
+      if (vistos.has(l.id)) return;
+      const membros = g.map(id => S.L.find(x => x.id === id));
+      membros.forEach(m => vistos.add(m.id));
+      if (!membros.every(m => S.est[m.id].fatura)) return;
+      const porCentro = {};
+      membros.forEach(m => (porCentro[m.centro] = porCentro[m.centro] || []).push(m.id));
+      Object.values(porCentro).forEach(x => ids.push(x.length > 1 ? x : x[0]));
+    });
+    const qtdLanc = ids.length;
     el('cxMsg').textContent = 'Conferindo…';
     rodar('conferirEnvio', ids).then(res => {
       el('cxMsg').textContent = '';
       const ok = res.filter(r => r.ok), ruins = res.filter(r => !r.ok);
-      const tot = r2(lista.filter(l => ok.some(r => r.id === l.id)).reduce((s, l) => s + l.valor, 0));
+      const okIds = new Set(); ok.forEach(r => (r.ids || [r.id]).forEach(i => okIds.add(i)));
+      const tot = r2(lista.filter(l => okIds.has(l.id)).reduce((s, l) => s + l.valor, 0));
+      const agrupados = ok.filter(r => r.ids && r.ids.length > 1);
       const m = modal(`<h3>Enviar ao Conta Azul</h3>
         ${ok.length ? `<p>${ok.length} lançamentos novos, total ${brl(tot)}, como contas a pagar no ${esc(cartao(cartaoSel).nome)} com vencimento em ${dia(vencSel)}.</p>` : ''}
+        ${agrupados.length ? `<p>Agrupados por projeto:</p><table class="cx-t">${agrupados.map(r => `<tr><td>${esc(r.descricao)}</td><td class="muted">${r.ids.length} cobranças</td><td class="v"><b>${brl(r.valor)}</b></td></tr>`).join('')}</table>` : ''}
         ${ajustes.length ? `<p>${ajustes.length} valores corrigidos no Conta Azul:</p><table class="cx-t">${ajustes.map(a => `<tr><td>${esc(a.nome)}</td><td class="v muted">${brl(a.x.valor)}</td><td>→</td><td class="v"><b>${brl(a.valor)}</b></td></tr>`).join('')}</table>` : ''}
         ${(() => { const novos = [...new Set(ok.map(r => r.fornecedorNovo).filter(Boolean))]; return novos.length ? `<p>Fornecedores que serão cadastrados no Conta Azul: <b>${novos.map(esc).join(', ')}</b></p>` : ''; })()}
         ${ruins.length ? `<p class="alerta">${ruins.length} não podem ir ainda:</p><table class="cx-t">${ruins.map(r => { const l = lista.find(x => x.id === r.id) || {}; return `<tr><td>${dia(l.data)}</td><td>${esc(l.fornecedor || '')}</td><td class="v">${brl(l.valor || 0)}</td><td class="alerta">${esc(r.erro)}</td></tr>`; }).join('')}</table>` : ''}
@@ -916,7 +972,7 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
       m.querySelector('#mNao').onclick = () => m.remove();
       m.querySelector('#mOk').onclick = async () => {
         m.querySelector('#mOk').disabled = true;
-        const todos = ok.map(r => r.id), feitos = [], falhas = [];
+        const todos = ok.map(r => r.ids || r.id), feitos = [], falhas = [];
         for (let i = 0; i < todos.length; i += 20) {
           m.querySelector('#mMsg').textContent = `Enviando ${Math.min(i + 20, todos.length)} de ${todos.length}…`;
           try { const r = await rodar('enviarAoContaAzul', todos.slice(i, i + 20)); r.forEach(x => (x.ok ? feitos : falhas).push(x)); }
@@ -1037,8 +1093,8 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
           <td><input class="aQtd" type="number" min="1" max="10" value="${a.qtd || 1}"></td><td><input type="checkbox" class="aAtivo" ${a.ativo ? 'checked' : ''}></td></tr>`).join('')}
         </tbody></table></div>
       <div class="cx-painel cx-cfg"><h3>Fornecedores conhecidos (${regras.length})</h3>
-        <table class="cx-t"><thead><tr><th>Fornecedor</th><th>Categoria</th><th>Descrição</th><th>Projeto padrão</th><th></th></tr></thead><tbody id="kRegras">
-        ${regras.map(f => { const r = B.regras[f]; return `<tr data-f="${esc(f)}"><td>${esc(f)}${C.catalogo.fornecedores.length && !C.catalogo.fornecedores.includes(f) ? ' <span class="cx-st n">novo</span>' : ''}</td><td class="muted">${esc(r.categoria || '')}</td><td class="muted">${esc(r.descricao || '')}</td><td class="muted">${r.centro ? esc(rotuloCentro(r.centro)) : ''}</td><td><span class="cx-lk neg" data-rmr="${esc(f)}">esquecer</span></td></tr>`; }).join('')}
+        <table class="cx-t"><thead><tr><th>Fornecedor</th><th>Categoria</th><th>Descrição</th><th>Projeto padrão</th><th class="c">Agrupar no envio</th><th></th></tr></thead><tbody id="kRegras">
+        ${regras.map(f => { const r = B.regras[f]; return `<tr data-f="${esc(f)}"><td>${esc(f)}${C.catalogo.fornecedores.length && !C.catalogo.fornecedores.includes(f) ? ' <span class="cx-st n">novo</span>' : ''}</td><td class="muted">${esc(r.categoria || '')}</td><td class="muted">${esc(r.descricao || '')}</td><td class="muted">${r.centro ? esc(rotuloCentro(r.centro)) : ''}</td><td class="c"><input type="checkbox" class="rAgr" ${agrupa(f) ? 'checked' : ''}></td><td><span class="cx-lk neg" data-rmr="${esc(f)}">esquecer</span></td></tr>`; }).join('')}
         </tbody></table></div>
       <div class="acoes"><button class="pri" id="kSalvar">Salvar configurações</button><span class="msg" id="kMsg"></span></div>`;
     const regrasNovas = Object.assign({}, B.regras);
@@ -1059,6 +1115,7 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
       }).filter(p => p.nome);
       if (cartoes.some(c => !c.fech || !c.venc)) { el('kMsg').innerHTML = '<span class="alerta">Preencha o dia de fechamento e de vencimento de todos os cartões.</span>'; return; }
       if (projetos.some(p => !p.meraki || !p.expert)) { el('kMsg').innerHTML = '<span class="alerta">Escolha os dois centros de custo de cada projeto.</span>'; return; }
+      el('kRegras').querySelectorAll('tr[data-f]').forEach(tr => { const f = tr.dataset.f; if (regrasNovas[f]) regrasNovas[f] = Object.assign({}, regrasNovas[f], {agrupar: tr.querySelector('.rAgr').checked}); });
       const assinaturas = (B.assinaturas || []).map(a => { const tr = el('kAss').querySelector(`[data-a="${a.id}"]`), q = s => tr.querySelector(s);
         return Object.assign({}, a, {dia: Number(q('.aDia').value) || a.dia, valor: Number(q('.aVal').value) || a.valor, qtd: Number(q('.aQtd').value) || 1, ativo: q('.aAtivo').checked}); });
       rodar('salvarConfigCartoes', {cartoes, projetos, regras: regrasNovas, assinaturas}).then(() => { el('kMsg').innerHTML = '<span class="ok">Salvo ✓</span>'; return carregarCartoes(); }).catch(e => el('kMsg').innerHTML = '<span class="alerta">' + esc(e.message || e) + '</span>');
