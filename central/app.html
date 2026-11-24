@@ -536,7 +536,13 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     const Lr = L.filter(l => !(l.caParcela && CA.some(x => x.id === l.caParcela)));
     const CAr = CA.filter(x => !L.some(l => l.caParcela === x.id));
     // ligado a um lançamento do Conta Azul: se o valor mudou na central, o envio corrige o valor lá
-    L.forEach(l => { const x = l.caParcela && CA.find(x => x.id === l.caParcela); if (x) est[l.id].ca = v2(x.valor - l.valor) ? 'enviado' : {ajustar: x}; });
+    // (vários lançamentos da central podem apontar para o mesmo do Conta Azul, quando lá está agrupado)
+    const porParcela = {};
+    L.forEach(l => { if (l.caParcela && CA.some(x => x.id === l.caParcela)) (porParcela[l.caParcela] = porParcela[l.caParcela] || []).push(l); });
+    Object.keys(porParcela).forEach(id => {
+      const x = CA.find(x => x.id === id), ls = porParcela[id], soma = r2(ls.reduce((s, l) => s + l.valor, 0));
+      ls.forEach(l => est[l.id].ca = v2(x.valor - soma) ? 'enviado' : ls.length > 1 ? {ajustarGrupo: x, soma, ids: ls.map(l => l.id)} : {ajustar: x});
+    });
     const mc = casar(Lr, CAr, 31);
     mc.pares.forEach(([ia, ib]) => ia.forEach(i => est[Lr[i].id].ca = ib.map(j => CAr[j])));
     // o que sobrou dos dois lados soma o mesmo valor: foi lançado no Conta Azul agrupado de outro jeito (não reenviar)
@@ -556,15 +562,34 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
       g.L.forEach(l => est[l.id].ca = g.C.map(j => CAr[j]));
       mc.sobraB = mc.sobraB.filter(j => !g.C.includes(j));
     });
-    // mesmo fornecedor, valor diferente (ex.: assinatura lançada com valor estimado no Conta Azul): só quando é um contra um
-    const pend = Lr.filter(l => !est[l.id].ca);
-    mc.sobraB = mc.sobraB.filter(j => {
-      const x = CAr[j], doForn = pend.filter(l => semAc(l.fornecedor) === semAc(x.quem));
-      const caDoForn = mc.sobraB.filter(k => semAc(CAr[k].quem) === semAc(x.quem));
-      const l = doForn.length === 1 && caDoForn.length === 1 && dias(doForn[0].data, x.comp) <= 45 ? doForn[0] : null;
-      if (!l) return true;
-      est[l.id].ca = {ajustar: x};
-      return false;
+    // previsão no Conta Azul (recorrência) com outro valor: o envio corrige a previsão em vez de criar outro lançamento
+    //  - mesma quantidade dos dois lados: corrige um a um, pela ordem de data
+    //  - um no Conta Azul e vários na central (Facebook agrupado por expert): corrige o total para a soma da fatura
+    //  - qualquer outra combinação: não envia; fica "conferir no Conta Azul"
+    const pend = () => Lr.filter(l => !est[l.id].ca);
+    const casarPrevisoes = chave => {
+      const g = {};
+      pend().forEach(l => { const k = chave(l.fornecedor, l.centro); (g[k] = g[k] || {L: [], C: []}).L.push(l); });
+      mc.sobraB.forEach(j => { const x = CAr[j], k = chave(x.quem, centroDoCA(x.partes)); if (g[k]) g[k].C.push(j); });
+      Object.values(g).forEach(({L: ls, C: cs}) => {
+        if (!cs.length) return;
+        if (cs.length === ls.length) {
+          const lo = ls.slice().sort((a, b) => a.data.localeCompare(b.data)), co = cs.slice().sort((a, b) => String(CAr[a].comp).localeCompare(String(CAr[b].comp)));
+          lo.forEach((l, i) => est[l.id].ca = {ajustar: CAr[co[i]]});
+        } else if (cs.length === 1) {
+          const x = CAr[cs[0]], soma = r2(ls.reduce((s, l) => s + l.valor, 0));
+          ls.forEach(l => est[l.id].ca = {ajustarGrupo: x, soma, ids: ls.map(l => l.id)});
+        } else return;
+        mc.sobraB = mc.sobraB.filter(j => !cs.includes(j));
+      });
+    };
+    casarPrevisoes(chaveFP);
+    casarPrevisoes(forn => semAc(forn));
+    // (só trava com lançamento do mesmo fornecedor e do mesmo projeto; Meraki/rateio valem para qualquer projeto)
+    const mesmoProjeto = (a, b) => a === b || ['Meraki', 'Rateio'].includes(a) || ['Meraki', 'Rateio'].includes(b);
+    pend().forEach(l => {
+      const cs = mc.sobraB.filter(j => semAc(CAr[j].quem) === semAc(l.fornecedor) && mesmoProjeto(projetoDoCentro(l.centro), projetoDoCentro(centroDoCA(CAr[j].partes))));
+      if (cs.length) est[l.id].ca = {conflito: cs.map(j => CAr[j])};
     });
     L.forEach(l => { if (l.caId && !est[l.id].ca) est[l.id].ca = 'enviado'; });
     const meta = sugestoesMeta(cid);
@@ -627,7 +652,7 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     const {lista, aberta} = faturasDoCartao(cartaoSel);
     if (!vencSel || !lista.includes(vencSel)) vencSel = aberta;
     const S = situacao(cartaoSel, vencSel), c = cartao(cartaoSel);
-    const enviaveis = S.L.filter(l => S.est[l.id].fatura && (!S.est[l.id].ca || S.est[l.id].ca.ajustar) && l.valor > 0);
+    const enviaveis = S.L.filter(l => { const c = S.est[l.id].ca; return S.est[l.id].fatura && (!c || c.ajustar || c.ajustarGrupo) && l.valor > 0; });
     const prontas = S.soFatura.filter(s => s.pronta);
     const naoVieram = S.F.total != null ? S.L.filter(l => !S.est[l.id].fatura && !S.est[l.id].sugere && !l.caId) : [];
     const kpiFat = S.F.total != null ? brl(S.F.total) : '—';
@@ -726,7 +751,9 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
         const stF = e.fatura ? `<span class="cx-st v" title="${esc(e.fatura.map(i => i.desc + ' ' + brl(i.valor)).join(' + '))}">confere${e.fatura.length > 1 ? ' (' + e.fatura.length + ' linhas)' : ''}</span>`
           : e.sugere ? `<span class="cx-st r" title="${esc(e.sugere.desc)}">fatura tem ${brl(e.sugere.valor)}</span>`
           : S.F.total != null ? '<span class="cx-st r">não está na fatura</span>' : '<span class="cx-st n">aguardando</span>';
-        const stC = e.ca === 'enviado' ? '<span class="cx-st v">enviado</span>' : e.ca && e.ca.ajustar ? `<span class="cx-st r" title="${esc(e.ca.ajustar.desc)}">Conta Azul tem ${brl(e.ca.ajustar.valor)}</span>` : e.ca ? `<span class="cx-st v" title="${esc(e.ca.map(x => x.desc + ' ' + brl(x.valor)).join(' + '))}">lançado</span>`
+        const stC = e.ca === 'enviado' ? '<span class="cx-st v">enviado</span>' : e.ca && e.ca.ajustar ? `<span class="cx-st r" title="${esc(e.ca.ajustar.desc)}">Conta Azul tem ${brl(e.ca.ajustar.valor)}</span>`
+          : e.ca && e.ca.ajustarGrupo ? `<span class="cx-st r" title="${esc(e.ca.ajustarGrupo.desc + ' · no envio vira ' + brl(e.ca.soma))}">Conta Azul tem ${brl(e.ca.ajustarGrupo.valor)} no total</span>`
+          : e.ca && e.ca.conflito ? `<span class="cx-st r" title="${esc(e.ca.conflito.map(x => x.desc + ' ' + brl(x.valor)).join(' + '))}">conferir no Conta Azul</span>` : e.ca ? `<span class="cx-st v" title="${esc(e.ca.map(x => x.desc + ' ' + brl(x.valor)).join(' + '))}">lançado</span>`
           : e.fatura ? '<span class="cx-st a">pronto para enviar</span>' + (!forns.has(l.fornecedor) && C.catalogo.fornecedores.length ? ' <span class="cx-st n">fornecedor novo</span>' : '') : '<span class="cx-st n">—</span>';
         const trava = !!(l.caId);
         const extra = trava ? '' : e.sugere ? `<br><span class="cx-lk" data-uv="${l.id}">usar valor da fatura</span>` : (S.F.total != null && !e.fatura ? `<br><span class="cx-lk" data-px="${l.id}">próxima fatura</span>` : '');
@@ -865,8 +892,15 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
   function enviar(listaToda) {
     // o que já existe no Conta Azul com outro valor é corrigido lá; o resto é criado
     const S = situacao(cartaoSel, vencSel);
-    const ajustes = listaToda.filter(l => (S.est[l.id].ca || {}).ajustar).map(l => ({l, x: S.est[l.id].ca.ajustar}));
-    const lista = listaToda.filter(l => !(S.est[l.id].ca || {}).ajustar);
+    const ajustes = [];
+    listaToda.forEach(l => {
+      const c = S.est[l.id].ca || {};
+      if (c.ajustar) ajustes.push({ids: [l.id], x: c.ajustar, valor: l.valor, nome: c.ajustar.desc || l.fornecedor});
+      // agrupado: só corrige quando todas as cobranças do grupo conferiram com a fatura
+      else if (c.ajustarGrupo && !ajustes.some(a => a.x.id === c.ajustarGrupo.id) && c.ids.every(id => S.est[id].fatura))
+        ajustes.push({ids: c.ids, x: c.ajustarGrupo, valor: c.soma, nome: (c.ajustarGrupo.desc || l.fornecedor) + ' (' + c.ids.length + ' cobranças)'});
+    });
+    const lista = listaToda.filter(l => { const c = S.est[l.id].ca || {}; return !c.ajustar && !c.ajustarGrupo; });
     const ids = lista.map(l => l.id);
     el('cxMsg').textContent = 'Conferindo…';
     rodar('conferirEnvio', ids).then(res => {
@@ -875,7 +909,7 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
       const tot = r2(lista.filter(l => ok.some(r => r.id === l.id)).reduce((s, l) => s + l.valor, 0));
       const m = modal(`<h3>Enviar ao Conta Azul</h3>
         ${ok.length ? `<p>${ok.length} lançamentos novos, total ${brl(tot)}, como contas a pagar no ${esc(cartao(cartaoSel).nome)} com vencimento em ${dia(vencSel)}.</p>` : ''}
-        ${ajustes.length ? `<p>${ajustes.length} valores corrigidos no Conta Azul:</p><table class="cx-t">${ajustes.map(a => `<tr><td>${esc(a.x.desc || a.l.fornecedor)}</td><td class="v muted">${brl(a.x.valor)}</td><td>→</td><td class="v"><b>${brl(a.l.valor)}</b></td></tr>`).join('')}</table>` : ''}
+        ${ajustes.length ? `<p>${ajustes.length} valores corrigidos no Conta Azul:</p><table class="cx-t">${ajustes.map(a => `<tr><td>${esc(a.nome)}</td><td class="v muted">${brl(a.x.valor)}</td><td>→</td><td class="v"><b>${brl(a.valor)}</b></td></tr>`).join('')}</table>` : ''}
         ${(() => { const novos = [...new Set(ok.map(r => r.fornecedorNovo).filter(Boolean))]; return novos.length ? `<p>Fornecedores que serão cadastrados no Conta Azul: <b>${novos.map(esc).join(', ')}</b></p>` : ''; })()}
         ${ruins.length ? `<p class="alerta">${ruins.length} não podem ir ainda:</p><table class="cx-t">${ruins.map(r => { const l = lista.find(x => x.id === r.id) || {}; return `<tr><td>${dia(l.data)}</td><td>${esc(l.fornecedor || '')}</td><td class="v">${brl(l.valor || 0)}</td><td class="alerta">${esc(r.erro)}</td></tr>`; }).join('')}</table>` : ''}
         <div class="acoes" style="margin-top:14px"><button class="pri" id="mOk" ${ok.length + ajustes.length ? '' : 'disabled'}>Enviar</button><button id="mNao">Cancelar</button></div><div class="msg" id="mMsg"></div>`);
@@ -890,7 +924,7 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
         }
         if (ajustes.length) {
           m.querySelector('#mMsg').textContent = 'Corrigindo valores no Conta Azul…';
-          try { const r = await rodar('ajustarNoContaAzul', ajustes.map(a => ({id: a.l.id, parcela: a.x.id}))); r.forEach(x => (x.ok ? feitos : falhas).push(x)); }
+          try { const r = await rodar('ajustarNoContaAzul', ajustes.map(a => ({ids: a.ids, parcela: a.x.id, valor: a.valor}))); r.forEach(x => (x.ok ? feitos : falhas).push(x)); }
           catch (e) { falhas.push({erro: e.message || String(e)}); }
         }
         m.querySelector('#mMsg').innerHTML = `<span class="ok">${feitos.length} concluídos.</span>` + (falhas.length ? `<br><span class="alerta">${falhas.length} com erro: ${esc(falhas.map(f => f.erro).filter((v, i, a) => a.indexOf(v) === i).join(' | '))}</span>` : '');
