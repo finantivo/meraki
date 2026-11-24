@@ -545,9 +545,23 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
       sobraL.forEach(l => est[l.id].ca = sobraC);
       mc.sobraB = [];
     }
-    // mesmo fornecedor, valor diferente (ex.: assinatura lançada com valor estimado no Conta Azul): não reenviar, só avisar
+    // lançado agrupado no Conta Azul (ex.: várias cobranças do Facebook de um expert numa linha só):
+    // soma por fornecedor + projeto dos dois lados; se bater, está tudo lançado
+    const chaveFP = (forn, centro) => semAc(forn) + '|' + projetoDoCentro(centro);
+    const grupos = {};
+    Lr.filter(l => !est[l.id].ca).forEach(l => { const g = grupos[chaveFP(l.fornecedor, l.centro)] = grupos[chaveFP(l.fornecedor, l.centro)] || {L: [], C: []}; g.L.push(l); });
+    mc.sobraB.forEach(j => { const x = CAr[j], g = grupos[chaveFP(x.quem, centroDoCA(x.partes))]; if (g) g.C.push(j); });
+    Object.values(grupos).forEach(g => {
+      if (!g.C.length || !v2(g.L.reduce((s, l) => s + l.valor, 0) - g.C.reduce((s, j) => s + CAr[j].valor, 0))) return;
+      g.L.forEach(l => est[l.id].ca = g.C.map(j => CAr[j]));
+      mc.sobraB = mc.sobraB.filter(j => !g.C.includes(j));
+    });
+    // mesmo fornecedor, valor diferente (ex.: assinatura lançada com valor estimado no Conta Azul): só quando é um contra um
+    const pend = Lr.filter(l => !est[l.id].ca);
     mc.sobraB = mc.sobraB.filter(j => {
-      const x = CAr[j], l = Lr.find(l => !est[l.id].ca && semAc(l.fornecedor) === semAc(x.quem) && dias(l.data, x.comp) <= 45);
+      const x = CAr[j], doForn = pend.filter(l => semAc(l.fornecedor) === semAc(x.quem));
+      const caDoForn = mc.sobraB.filter(k => semAc(CAr[k].quem) === semAc(x.quem));
+      const l = doForn.length === 1 && caDoForn.length === 1 && dias(doForn[0].data, x.comp) <= 45 ? doForn[0] : null;
       if (!l) return true;
       est[l.id].ca = {ajustar: x};
       return false;
