@@ -218,7 +218,7 @@ el('abas').onclick = ev => { const b = ev.target.closest('[data-a]'); if (b) abr
 .cx-cartao.on { border: 2px solid var(--verde); padding: 10px 13px; }
 .cx-cartao .cx-topo { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .cx-cartao b { font-size: 14px; } .cx-cartao small { color: var(--tx3); font-size: 12px; display: block; }
-.cx-cartao .cx-topo small { white-space: nowrap; }
+.cx-cartao .cx-topo small { white-space: nowrap; font-size: 10.5px; }
 .cx-cartao .cx-v { font-family: Outfit, sans-serif; font-size: 18px; font-weight: 600; color: var(--tx); margin: 4px 0 2px; }
 .cx-painel { background: var(--sup); border: 1px solid var(--linha); border-radius: 12px; padding: 16px; margin-bottom: 14px; overflow-x: auto; }
 .cx-grade > section { min-width: 0; }
@@ -572,8 +572,10 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
       });
     });
     const gs = {};
-    Lr.filter(l => agrupa(fornGrupo(l)) && !est[l.id].ca).forEach(l => { const k = kG(fornGrupo(l), l.centro, l.descricao, l.data); (gs[k] = gs[k] || {L: [], C: []}).L.push(l); });
-    CAr.filter(x => agrupa(x.quem)).forEach(x => { const k = kG(x.quem, centroDoCA(x.partes), x.desc, x.comp); if (gs[k]) gs[k].C.push(x); });
+    // envio: um lançamento por cartão (esta fatura), vencimento (esta fatura), expert e mês de competência (regra da Lu)
+    const kEnvio = (f, c, d, dt) => kG(f, c, '', dt);
+    Lr.filter(l => agrupa(fornGrupo(l)) && !est[l.id].ca).forEach(l => { const k = kEnvio(fornGrupo(l), l.centro, l.descricao, l.data); (gs[k] = gs[k] || {L: [], C: []}).L.push(l); });
+    CAr.filter(x => agrupa(x.quem)).forEach(x => { const k = kEnvio(x.quem, centroDoCA(x.partes), x.desc, x.comp); if (gs[k]) gs[k].C.push(x); });
     Object.values(gs).forEach(g => {
       const soma = r2(g.L.reduce((s, l) => s + l.valor, 0)), somaC = r2(g.C.reduce((s, x) => s + x.valor, 0));
       if (g.C.length && v2(soma - somaC)) g.L.forEach(l => est[l.id].ca = g.C);
