@@ -106,7 +106,7 @@ function desenhar() {
     return `<tr class="grupo"><td><input type="checkbox" data-todos="${tipo}" ${xs.every(i => marcados[i.key]) ? 'checked' : ''}></td><td colspan="6">${titulo}</td></tr>` + xs.map(i => `<tr>
       <td><input type="checkbox" data-k="${esc(i.key)}" ${marcados[i.key] ? 'checked' : ''}></td>
       <td>${dia(i.comp)}</td><td>${esc(i.quem || '')}</td>
-      <td>${esc(i.desc || '')} ${i.manual ? '<span class="tag">lançado à mão</span> <a href="#" data-rm="' + esc(i.key) + '" class="muted">remover</a>' : (i.aberto ? '<span class="tag">ainda não paga</span>' : '')}</td>
+      <td>${esc(i.desc || '')} ${i.manual ? '<span class="tag">lançado à mão</span> <a href="#" data-rm="' + esc(i.key) + '" class="muted">remover</a>' : (i.origem === 'cartão' ? '<span class="tag ab">cartão · vence ' + dia(i.venc).slice(0, 5) + '</span>' : i.aberto ? '<span class="tag">ainda não paga</span>' : '')}</td>
       <td class="muted">${esc(i.cat || '')}</td><td class="v">${brl(Number(i.integral))}</td><td class="v ${i.parte < 0 ? 'neg' : ''}"><b>${brl(Number(i.parte))}</b></td></tr>`).join('');
   };
   const nd = somaSel(e, 'ND'), nc = somaSel(e, 'NC'), saldo = nd - nc;
@@ -125,7 +125,8 @@ function desenhar() {
         <div class="kpi"><span>Nota de crédito (Meraki paga)</span><b>${brl(nc)}</b></div>
         <div class="kpi"><span>${saldo >= 0 ? 'Saldo a receber do expert' : 'Saldo a pagar ao expert'}</span><b style="color:${saldo >= 0 ? 'var(--pos)' : 'var(--neg)'}">${brl(Math.abs(saldo))}</b></div>
       </div>
-      <div class="acoes"><button class="pri" id="emitir">Emitir notas e gerar PDFs</button><button id="jaCobrados">Marcar selecionados como já cobrados</button></div>
+      <div class="campos" style="margin-top:6px"><label>Comprovantes para juntar à nota de débito (PDF ou imagem)<input id="comprov" type="file" accept="application/pdf,image/png,image/jpeg" multiple></label></div>
+      <div class="acoes" style="margin-top:10px"><button class="pri" id="emitir">Emitir notas e baixar PDFs</button><button id="jaCobrados">Marcar selecionados como já cobrados</button></div>
       <div class="msg" id="msg"></div>
     </div>
     <div class="cartao"><h3>Itens na fila</h3>
@@ -149,6 +150,40 @@ function desenhar() {
   ligar(e);
 }
 
+// junta o PDF da nota com os comprovantes (pdf-lib, carregado só quando precisa) e baixa
+function carregarPdfLib() {
+  if (window.PDFLib) return Promise.resolve(window.PDFLib);
+  return new Promise((ok, falha) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
+    sc.onload = () => window.PDFLib ? ok(window.PDFLib) : falha(new Error('Não consegui carregar o juntador de PDF.'));
+    sc.onerror = () => falha(new Error('Não consegui carregar o juntador de PDF (sem internet?).'));
+    document.head.appendChild(sc);
+  });
+}
+async function baixarNota(n, anexos) {
+  let bytes = Uint8Array.from(atob(n.pdf64), c => c.charCodeAt(0));
+  if (anexos.length) {
+    const {PDFDocument} = await carregarPdfLib();
+    const doc = await PDFDocument.load(bytes);
+    for (const a of anexos) {
+      const dados = new Uint8Array(await a.arrayBuffer());
+      if (/pdf$/i.test(a.type) || /\.pdf$/i.test(a.name)) {
+        const outro = await PDFDocument.load(dados, {ignoreEncryption: true});
+        (await doc.copyPages(outro, outro.getPageIndices())).forEach(pg => doc.addPage(pg));
+      } else {
+        const img = /png$/i.test(a.type) ? await doc.embedPng(dados) : await doc.embedJpg(dados);
+        const pg = doc.addPage([595.28, 841.89]), esc2 = Math.min(555 / img.width, 800 / img.height, 1);
+        pg.drawImage(img, {x: 20, y: 841.89 - 20 - img.height * esc2, width: img.width * esc2, height: img.height * esc2});
+      }
+    }
+    bytes = await doc.save();
+  }
+  const url = URL.createObjectURL(new Blob([bytes], {type: 'application/pdf'}));
+  const a = document.createElement('a'); a.href = url; a.download = n.arquivo || (n.tipo + ' ' + n.numero + '.pdf');
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
 function ligar(e) {
   el('itens').onchange = ev => {
     const t = ev.target;
@@ -163,9 +198,12 @@ function ligar(e) {
       emissao: el('emissao').value, vencimento: el('venc').value, referencia: el('ref').value};
     if (!pedido.itens.ND.length && !pedido.itens.NC.length) { el('msg').textContent = 'Selecione pelo menos um item.'; return; }
     el('emitir').disabled = true; el('msg').textContent = 'Gerando as notas…';
-    rodar('emitirNotas', pedido).then(r => {
-      el('msg').innerHTML = 'Pronto: ' + r.map(n => `<a href="${n.pdfUrl}" target="_blank">${n.tipo} ${n.numero} (${brl(n.total)})</a>`).join(' · ');
-      return carregar().then(() => { el('msg') && (el('msg').innerHTML = 'Pronto: ' + r.map(n => `<a href="${n.pdfUrl}" target="_blank">${n.tipo} ${n.numero} (${brl(n.total)})</a>`).join(' · ')); });
+    const comprovantes = [...(el('comprov').files || [])];
+    rodar('emitirNotas', pedido).then(async r => {
+      // baixa cada nota; a de débito sai com os comprovantes no mesmo PDF
+      for (const n of r) await baixarNota(n, n.tipo === 'ND' ? comprovantes : []);
+      const txt = 'Pronto: ' + r.map(n => `${n.tipo} ${n.numero} (${brl(n.total)})`).join(' · ') + ' · PDFs baixados e guardados no Drive.';
+      return carregar().then(() => { el('msg') && (el('msg').textContent = txt); });
     }).catch(err => { el('msg').textContent = err.message || err; el('emitir').disabled = false; });
   };
   el('jaCobrados').onclick = () => {
