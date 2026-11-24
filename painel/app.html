@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel Meraki</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  /* identidade Meraki: verde-petróleo → oliva → laranja queimado, areia. Só tema claro. */
+  color-scheme: light;
+  --marca-verde: #466a5e; --marca-oliva: #857a50; --marca-laranja: #c4610f; --marca-areia: #d9bc94;
+  --bg: #f6f2ec; --surface: #ffffff; --surface-2: #f3eee6; --line: #e6dfd3;
+  --text: #1f2a26; --text-2: #55605a; --text-3: #8a918c;
+  --accent: #466a5e; --accent-soft: #e6eeea;
+  --pos: #1f8466; --neg: #c8600c; --pos-soft: #cfe5dc; --neg-soft: #f4dcc6; --ink: #2b3a35;
+  --good: #1f8466; --warn: #b07800; --crit: #c8600c;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 Inter, system-ui, sans-serif; }
+header { background: linear-gradient(115deg, var(--marca-verde) 0%, var(--marca-oliva) 55%, var(--marca-laranja) 100%); color: #fff; position: sticky; top: 0; z-index: 5; box-shadow: 0 2px 10px rgba(31,42,38,.12); }
+.topo { max-width: 1760px; margin: 0 auto; padding: 14px 28px 0; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.marca { font-family: Outfit, Inter, sans-serif; font-weight: 700; font-size: 26px; letter-spacing: -.02em; line-height: 1; }
+.marca span { display: block; font-weight: 500; font-size: 10px; letter-spacing: .5em; margin-top: 4px; opacity: .9; }
+.marca small { display: block; font-family: Inter, sans-serif; font-weight: 400; font-size: 11px; letter-spacing: 0; margin-top: 6px; opacity: .8; }
+header .sub { color: rgba(255,255,255,.85) !important; }
+header select { background: rgba(255,255,255,.95); border-color: transparent; }
+.filtros { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.linha-dre { display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
+.periodo { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.periodo input { font: inherit; font-size: 13px; border: 0; border-radius: 8px; padding: 4px 8px; background: rgba(255,255,255,.95); color: var(--text); }
+select:disabled { opacity: .55; }
+#t-fluxo td.fut { font-style: italic; }
+tr.linha-ent td:first-child { color: var(--pos); } tr.linha-sai td:first-child { color: var(--neg); }
+tr.saldo-final td.neg { background: #fbe7d6 !important; }
+tr.margem td.mpos { color: var(--pos); } tr.margem td.mneg { color: var(--neg); }
+select, button.seg { font: inherit; color: var(--text); background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+.segmentado { display: inline-flex; border-radius: 8px; overflow: hidden; background: rgba(255,255,255,.18); }
+.segmentado button { font: inherit; border: 0; background: transparent; color: #fff; padding: 6px 12px; cursor: pointer; }
+.segmentado button.on { background: #fff; color: var(--marca-verde); font-weight: 600; }
+nav { max-width: 1760px; margin: 0 auto; padding: 0 28px; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+nav button { font: inherit; font-weight: 500; background: none; border: 0; border-bottom: 3px solid transparent; color: rgba(255,255,255,.78); padding: 14px 12px 10px; cursor: pointer; white-space: nowrap; }
+nav button:hover { color: #fff; }
+nav button.on { color: #fff; border-color: var(--marca-areia); font-weight: 600; }
+main { max-width: 1760px; margin: 0 auto; padding: 20px 28px; }
+.secao { display: none; } .secao.on { display: block; }
+.grade { display: grid; gap: 14px; }
+.kpis { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom: 14px; }
+.cartao { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+.cartao h3 { margin: 0 0 2px; font-family: Outfit, Inter, sans-serif; font-size: 16px; font-weight: 600; color: var(--marca-verde); }
+.cartao .sub { color: var(--text-3); font-size: 12px; margin-bottom: 10px; }
+.kpi { border-top: 3px solid var(--marca-areia); }
+.kpi.destaque { border-top-color: var(--marca-verde); }
+.kpi .rot { color: var(--text-2); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.kpi .val { font-family: Outfit, Inter, sans-serif; font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.kpi .cmp { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.dois { grid-template-columns: 2fr 1fr; }
+.dias { grid-template-columns: 3fr 2fr; }
+@media (max-width: 900px) { .dias { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .dois { grid-template-columns: 1fr; } }
+.grafico { position: relative; height: 280px; }
+.tabela-wrap { overflow: auto; max-height: calc(100vh - 150px); border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); font-size: 13px; }
+th { position: sticky; top: 0; background: var(--surface-2); color: var(--text-2); font-weight: 600; font-size: 12px; z-index: 1; }
+th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: var(--surface); z-index: 2; min-width: 200px; max-width: 270px; overflow: hidden; text-overflow: ellipsis; }
+th:first-child { background: var(--surface-2); z-index: 3; }
+tr.g td { font-weight: 600; background: var(--surface-2); }
+tr.g td:first-child { background: var(--surface-2); }
+tr.tot td { font-weight: 700; border-top: 2px solid var(--marca-oliva); }
+tr.tot.destaque td { background: var(--accent-soft); color: var(--marca-verde); }
+tr.tot.destaque td.neg { color: var(--neg); }
+tr.n2 td:first-child { padding-left: 26px; color: var(--text-2); }
+tr.n3 td:first-child { padding-left: 44px; color: var(--text-3); font-size: 12px; }
+tr.n4 td:first-child { padding-left: 62px; color: var(--text-3); font-size: 12px; }
+tr.n4 td { font-size: 12px; color: var(--text-2); }
+tr.sit td { font-size: 12px; } tr.sit td:first-child { color: var(--text-2); }
+tr.sit.aberto td { font-style: italic; }
+tr.negdia td { background: #fdf0e4; }
+#t-dias td:first-child, #t-dias th:first-child { min-width: 0; position: static; }
+#t-dias td, #t-dias th { padding: 6px 8px; }
+.tag-fora { font-size: 10px; background: var(--marca-areia); color: #5a4a2c; border-radius: 999px; padding: 1px 6px; margin-left: 4px; }
+.vencido { font-style: normal; font-size: 10px; background: var(--neg); color: #fff; border-radius: 999px; padding: 1px 6px; margin-left: 4px; }
+tr.clic { cursor: pointer; } tr.clic:hover td { background: var(--accent-soft); }
+td.neg { color: var(--neg); } td.zero { color: var(--text-3); }
+td.av { color: var(--text-3); font-size: 12px; }
+th.fut, td.fut { background-image: linear-gradient(var(--surface-2), var(--surface-2)); background-blend-mode: multiply; }
+td[data-m] { cursor: pointer; } td[data-m]:hover { background: var(--accent-soft); text-decoration: underline; }
+.alerta { background: #fff4e8; border: 1px solid #f0cfae; border-left: 4px solid var(--neg); border-radius: 10px; padding: 12px 16px; margin-bottom: 14px; color: var(--text); }
+.alerta.ok { background: #eef6f2; border-color: #cfe5dc; border-left-color: var(--pos); }
+.contas td { font-size: 13px; } .contas td:first-child { min-width: 0; position: static; white-space: normal; }
+.seta { display: inline-block; width: 14px; color: var(--text-3); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.chip { font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--surface); color: var(--text-2); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+.chip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.projs { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+.proj { cursor: pointer; transition: border-color .15s; }
+.proj:hover { border-color: var(--accent); }
+.proj .nome { font-weight: 600; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.projs-ano td:first-child, .projs-ano th:first-child { min-width: 0; width: 1%; }
+.projs-ano th:not(:first-child), .projs-ano td:not(:first-child) { text-align: center !important; }
+.selo { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); }
+.selo.andamento { color: #fff; background: var(--marca-verde); } .selo.novo { color: #fff; background: var(--marca-laranja); } .selo.encerrado { color: var(--text-3); }
+.linha { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; color: var(--text-2); }
+.linha b { color: var(--text); font-variant-numeric: tabular-nums; }
+.fonte { font-size: 11px; color: var(--text-3); margin-top: 8px; }
+.voltar { font: inherit; background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; margin-bottom: 10px; }
+.barra { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.barra i { display: block; height: 100%; background: linear-gradient(90deg, var(--marca-verde), var(--marca-oliva)); border-radius: 3px; }
+.aviso { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: var(--text-2); margin-bottom: 14px; }
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; z-index: 20; padding: 16px; }
+.modal.on { display: flex; }
+.modal .caixa { background: var(--surface); border-radius: 12px; max-width: min(1240px, 96vw); width: 100%; max-height: 85vh; display: flex; flex-direction: column; }
+.modal .cab { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 12px; }
+.modal .corpo { overflow: auto; }
+.modal td:first-child { min-width: 110px; }
+.modal td, .modal th { white-space: normal; vertical-align: top; } .modal td:last-child, .modal th:last-child { white-space: nowrap; }
+.fechar { font: inherit; background: none; border: 0; color: var(--text-2); cursor: pointer; font-size: 20px; line-height: 1; }
+h2 { font-family: Outfit, Inter, sans-serif; font-size: 18px; font-weight: 600; margin: 24px 0 10px; color: var(--marca-verde); }
+.legenda { display: flex; gap: 14px; font-size: 12px; color: var(--text-2); margin-bottom: 6px; flex-wrap: wrap; }
+.legenda span.linha-leg::before { height: 3px; width: 14px; border-radius: 2px; vertical-align: 3px; }
+.legenda span.tracejada::before { background: repeating-linear-gradient(90deg, var(--c) 0 5px, transparent 5px 8px); }
+tr.margem td { font-size: 12px; font-style: italic; color: var(--marca-verde); background: var(--surface); }
+tr.margem td:first-child { padding-left: 26px; }
+tr.total-sel td { font-weight: 700; background: var(--accent-soft); border-top: 2px solid var(--marca-oliva); }
+.legenda span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
+@media (max-width: 600px) { main { padding: 16px; } .topo, nav { padding-left: 16px; padding-right: 16px; } th:first-child, td:first-child { min-width: 170px; } }
+</style>
+<script src="../comum.js"></script>
+<script>if (!sessaoMeraki('painel')) location.replace('./'); ligarGoogleScriptRun('painel');</script>
+</head>
+<body>
+<header>
+  <div class="topo">
+    <div class="marca">Meraki<span>DIGITAL</span><small id="atualizado"></small></div>
+    <div class="filtros">
+      <label for="ano" style="font-size:13px;opacity:.9">Ano</label>
+      <select id="ano"></select>
+      <div class="linha-dre" id="per-controles">
+        <div class="segmentado" id="dre-modo"><button data-modo="ano" class="on">Ano</button><button data-modo="anos">Todos os anos</button><button data-modo="periodo">Período</button></div>
+        <span id="dre-periodo" class="periodo" style="display:none"><label>de <input type="month" id="per-de"></label><label>até <input type="month" id="per-ate"></label></span>
+      </div>
+      <div class="segmentado" id="regime" title="Caixa = quando o dinheiro entrou/saiu. Competência = mês a que o lançamento se refere.">
+        <button data-r="c" class="on">Caixa</button><button data-r="k">Competência</button>
+      </div>
+      <div class="linha-dre" id="dre-controles" style="display:none">
+      <div class="segmentado analises" id="dre-analises"><button data-an="av" title="Análise vertical: quanto cada linha representa da receita bruta">AV</button><button data-an="ah" title="Análise horizontal: variação em relação à coluna anterior">AH</button></div>
+      </div>
+    </div>
+  </div>
+  <nav id="abas">
+    <button data-s="geral" class="on">Visão geral</button>
+    <button data-s="dre">DRE</button>
+    <button data-s="fluxo">Fluxo de caixa</button>
+    <button data-s="projetos">Projetos</button>
+    <button data-s="fixos">Custos fixos</button>
+  </nav>
+</header>
+
+<main>
+  <section class="secao on" id="s-geral">
+    <div class="grade kpis" id="kpis"></div>
+    <div class="grade dois">
+      <div class="cartao"><h3 id="tit-mensal">Entradas e saídas por mês</h3><div class="sub" id="sub-mensal"></div>
+        <div class="legenda"><span style="--c:var(--pos)">Entradas</span><span style="--c:var(--neg)">Saídas</span><span class="linha-leg" style="--c:var(--ink)">Resultado operacional</span></div>
+        <div class="grafico"><canvas id="g-mensal"></canvas></div></div>
+      <div class="cartao"><h3>Resultado por ano</h3><div class="sub">Resultado operacional e resultado final, em R$ mil</div>
+        <div class="legenda"><span style="--c:var(--pos)">Operacional</span><span style="--c:var(--ink)">Final</span></div>
+        <div class="grafico"><canvas id="g-anos"></canvas></div></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:24px 0 10px"><h2 style="margin:0" id="tit-proj-ano">Projetos no ano</h2><div class="chips" id="chips-geral" style="margin:0"></div></div>
+    <div class="tabela-wrap" id="t-geral-proj"></div>
+  </section>
+
+  <section class="secao" id="s-dre">
+    <div class="tabela-wrap" id="t-dre"></div>
+  </section>
+
+  <section class="secao" id="s-fluxo">
+    <div class="grade kpis" id="kpis-fluxo"></div>
+    <div class="grade dias" style="margin-bottom:14px">
+      <div class="cartao"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h3>Saldo do caixa dia a dia</h3><div class="sub" id="sub-dias"></div></div>
+        <div class="chips" id="chips-dias" style="margin:0"></div></div>
+        <div class="grafico" style="height:300px"><canvas id="g-dias"></canvas></div></div>
+      <div class="cartao"><h3>Próximos vencimentos</h3><div class="sub">Clique num dia para ver o que vence</div>
+        <div class="tabela-wrap" id="t-dias" style="max-height:330px;overflow-y:auto;border:0"></div></div>
+    </div>
+    <div class="grade dois" style="margin-bottom:14px">
+      <div class="cartao"><h3>Saldo do caixa mês a mês</h3><div class="sub" id="sub-fluxo"></div>
+        <div class="legenda"><span style="--c:var(--pos)">Saldo positivo</span><span style="--c:var(--neg)">Saldo negativo</span><span style="--c:var(--ink)">Saldo de hoje</span></div>
+        <div class="grafico"><canvas id="g-fluxo"></canvas></div></div>
+      <div class="cartao"><h3>Saldo das contas hoje</h3><div class="sub" id="sub-contas"></div><div id="t-contas"></div></div>
+    </div>
+    <div class="tabela-wrap" id="t-fluxo"></div>
+  </section>
+
+  <section class="secao" id="s-projetos">
+    <div id="proj-lista">
+      <div class="chips" id="chips-status"></div>
+      <div class="cartao" style="margin-bottom:14px"><h3>Ranking dos projetos</h3><div class="sub" id="sub-ranking"></div>
+        <div class="grafico" id="box-ranking" style="max-width:980px"><canvas id="g-ranking"></canvas></div></div>
+      <div class="grade projs" id="cards-proj"></div>
+    </div>
+    <div id="proj-detalhe" style="display:none"></div>
+  </section>
+
+  <section class="secao" id="s-fixos">
+    <div class="aviso" id="aviso-rateio"></div>
+    <div class="cartao" style="margin-bottom:14px"><h3>Composição das despesas</h3><div class="sub" id="sub-comp"></div>
+      <div class="legenda" id="leg-comp"></div>
+      <div class="grafico" style="height:80px"><canvas id="g-comp"></canvas></div></div>
+    <div class="cartao" style="margin-bottom:14px"><h3>Custos fixos da estrutura por mês</h3><div class="sub">Despesas do centro "Meraki" nas categorias que entram no rateio</div>
+      <div class="grafico"><canvas id="g-fixos"></canvas></div></div>
+    <div class="tabela-wrap" id="t-fixos"></div>
+    <h2>Rateio por projeto</h2>
+    <div class="tabela-wrap" id="t-rateio"></div>
+  </section>
+</main>
+
+<div class="modal" id="modal"><div class="caixa"><div class="cab"><div><b id="m-tit"></b><div class="sub" id="m-sub" style="margin:0"></div></div><button class="fechar" onclick="fecharModal()" aria-label="Fechar">×</button></div><div class="corpo" id="m-corpo"></div></div></div>
+
+<div id="carregando" style="padding:40px;text-align:center;color:#55605a;font:15px Inter,sans-serif">Carregando o painel…</div>
+<script>
+chamarMeraki({fn: 'dadosPainel', chave: sessaoMeraki('painel')}).then(d => {
+  window.__DADOS__ = d;
+  document.getElementById('carregando').remove();
+  const s = document.createElement('script'); s.src = 'painel.js'; document.body.appendChild(s);
+}).catch(e => {
+  if (/Sessão expirada/.test(e.message)) return sairMeraki('painel');
+  document.getElementById('carregando').textContent = 'Não consegui carregar o painel: ' + e.message;
+});
+</script>
+</body>
+</html>

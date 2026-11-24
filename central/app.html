@@ -1,0 +1,941 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Central Financeira Meraki</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root { --verde: #466a5e; --oliva: #857a50; --laranja: #c4610f; --areia: #d9bc94; --bg: #f6f2ec; --sup: #fff; --sup2: #f3eee6; --linha: #e6dfd3;
+  --tx: #1f2a26; --tx2: #55605a; --tx3: #8a918c; --pos: #1f8466; --neg: #c8600c; --suave: #e6eeea; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--tx); font: 14px/1.45 Inter, system-ui, sans-serif; }
+header { background: linear-gradient(115deg, var(--verde), var(--oliva) 55%, var(--laranja)); color: #fff; }
+.topo { max-width: 1500px; margin: 0 auto; padding: 14px 28px; display: flex; align-items: center; gap: 18px; }
+.marca { font-family: Outfit, sans-serif; font-weight: 700; font-size: 24px; line-height: 1; }
+.marca span { display: block; font-size: 10px; letter-spacing: .5em; font-weight: 500; margin-top: 3px; }
+.topo h1 { font-family: Outfit, sans-serif; font-weight: 500; font-size: 18px; margin: 0; opacity: .95; }
+.topo small { margin-left: auto; opacity: .85; font-size: 12px; }
+.abas { max-width: 1500px; margin: 0 auto; padding: 0 28px; display: flex; gap: 4px; }
+.abas button { background: transparent; border: 0; color: rgba(255,255,255,.8); padding: 9px 16px 11px; border-radius: 10px 10px 0 0; font-weight: 600; }
+.abas button.on { background: var(--bg); color: var(--verde); }
+.abas button:disabled { opacity: .45; }
+main { max-width: 1500px; margin: 0 auto; padding: 20px 28px; display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 18px; }
+@media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+.lista { display: flex; flex-direction: column; gap: 6px; }
+.exp { background: var(--sup); border: 1px solid var(--linha); border-radius: 10px; padding: 10px 12px; cursor: pointer; }
+.exp.on { border-color: var(--verde); box-shadow: inset 3px 0 0 var(--verde); }
+.exp b { display: block; } .exp small { color: var(--tx3); font-size: 12px; }
+.cartao { background: var(--sup); border: 1px solid var(--linha); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+h2 { font-family: Outfit, sans-serif; font-weight: 600; font-size: 20px; color: var(--verde); margin: 0 0 12px; display: flex; align-items: center; gap: 10px; }
+h3 { font-family: Outfit, sans-serif; font-weight: 600; font-size: 15px; color: var(--verde); margin: 0 0 8px; }
+.campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+label { font-size: 12px; color: var(--tx2); display: flex; flex-direction: column; gap: 4px; }
+input, select { font: inherit; font-size: 13px; padding: 7px 9px; border: 1px solid var(--linha); border-radius: 8px; background: #fff; color: var(--tx); }
+button { font: inherit; font-size: 13px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--linha); background: #fff; color: var(--tx); cursor: pointer; }
+button.pri { background: var(--verde); color: #fff; border-color: var(--verde); font-weight: 600; }
+button:disabled { opacity: .5; cursor: default; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--linha); font-size: 13px; text-align: left; vertical-align: top; }
+th { background: var(--sup2); color: var(--tx2); font-size: 12px; font-weight: 600; }
+td.v, th.v { text-align: right; white-space: nowrap; }
+tr.grupo td { background: var(--sup2); font-weight: 600; color: var(--verde); }
+.neg { color: var(--neg); } .muted { color: var(--tx3); font-size: 12px; }
+.tag { font-size: 10px; padding: 1px 7px; border-radius: 999px; background: #faeeda; color: #633806; white-space: nowrap; }
+.tag.ab { background: var(--suave); color: #2b4a40; }
+.resumo { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+.kpi { background: var(--sup2); border-radius: 10px; padding: 10px 12px; } .kpi span { font-size: 12px; color: var(--tx2); } .kpi b { display: block; font-size: 20px; font-family: Outfit, sans-serif; }
+.acoes { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.msg { margin-top: 10px; font-size: 13px; }
+details summary { cursor: pointer; color: var(--verde); font-weight: 600; font-size: 14px; }
+.vazio { color: var(--tx3); padding: 10px 0; }
+</style>
+<script src="../comum.js"></script>
+<script>if (!sessaoMeraki('notas')) location.replace('./'); ligarGoogleScriptRun('notas');</script>
+</head>
+<body>
+<header><div class="topo"><div class="marca">Meraki<span>DIGITAL</span></div><h1>Central Financeira</h1><small id="atualizado"></small></div>
+  <nav class="abas" id="abas"><button data-a="cartoes" class="on">Cartões</button><button data-a="notas">Notas de débito e crédito</button><button disabled>Conferência de vendas</button></nav></header>
+<main id="aba-notas" hidden>
+  <aside><div class="lista" id="lista"></div></aside>
+  <section id="conteudo"><div class="vazio">Carregando…</div></section>
+</main>
+<script>
+// qualquer erro aparece na tela (para a Malu poder mandar o print)
+window.addEventListener('error', e => { const d = document.createElement('pre'); d.style.cssText = 'color:#c8600c;background:#fff;padding:10px 16px;margin:0;white-space:pre-wrap;font-size:12px';
+  d.textContent = 'Erro: ' + e.message + ' (linha ' + e.lineno + ')'; document.body.insertBefore(d, document.body.firstChild); });
+</script>
+<script>
+const CHAVE = window.CHAVE_NOTAS || (function () { try { return localStorage.getItem('meraki_sessao_notas'); } catch (e) { return null; } })();
+let D = null, atual = null, marcados = {};
+const brl = v => (v < 0 ? '−' : '') + 'R$ ' + Math.abs(v).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const dia = d => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : '');
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const hoje = () => new Date().toISOString().slice(0, 10);
+const el = id => document.getElementById(id);
+const rodar = (fn, ...args) => new Promise((ok, erro) => google.script.run.withSuccessHandler(ok).withFailureHandler(erro)[fn](CHAVE, ...args));
+
+function carregar() {
+  return rodar('dadosNotas').then(d => {
+    D = d;
+    el('atualizado').textContent = d.atualizado ? 'Conta Azul atualizado em ' + d.atualizado : '';
+    if (!atual || !D.experts.some(e => e.nome === atual)) atual = (D.experts.find(e => e.fila.length || e.manuais.length) || D.experts[0] || {}).nome;
+    D.experts.forEach(e => e.fila.concat(e.manuais).forEach(i => { if (!(i.key in marcados)) marcados[i.key] = true; }));
+    desenhar();
+  }).catch(e => { el('conteudo').innerHTML = `<div class="cartao neg">${esc(e.message || e)}</div>`; });
+}
+
+function itensDe(e, tipo) {
+  return e.fila.filter(i => i.tipo === tipo).concat(e.manuais.filter(m => m.tipo === tipo).map(m => Object.assign({manual: true, comp: m.data}, m)));
+}
+const somaSel = (e, tipo) => itensDe(e, tipo).filter(i => marcados[i.key]).reduce((s, i) => s + Number(i.parte), 0);
+
+function desenhar() {
+  el('lista').innerHTML = D.experts.map(e => {
+    const n = e.fila.length + e.manuais.length;
+    return `<div class="exp ${e.nome === atual ? 'on' : ''}" data-e="${esc(e.nome)}"><b>${esc(e.nome)}</b><small>${n ? n + ' itens na fila' : 'nada pendente'} · ${esc(e.status)}</small></div>`;
+  }).join('') + `<div class="exp ${atual === '#hist' ? 'on' : ''}" data-e="#hist"><b>Notas emitidas</b><small>${D.historico.length} no histórico</small></div>`;
+  if (atual === '#hist') return desenharHistorico();
+  const e = D.experts.find(x => x.nome === atual);
+  if (!e) { el('conteudo').innerHTML = '<div class="vazio">Nenhum expert.</div>'; return; }
+  const tabela = (tipo, titulo) => {
+    const xs = itensDe(e, tipo);
+    if (!xs.length) return `<tr class="grupo"><td colspan="7">${titulo}</td></tr><tr><td colspan="7" class="muted">Nada na fila.</td></tr>`;
+    return `<tr class="grupo"><td><input type="checkbox" data-todos="${tipo}" ${xs.every(i => marcados[i.key]) ? 'checked' : ''}></td><td colspan="6">${titulo}</td></tr>` + xs.map(i => `<tr>
+      <td><input type="checkbox" data-k="${esc(i.key)}" ${marcados[i.key] ? 'checked' : ''}></td>
+      <td>${dia(i.comp)}</td><td>${esc(i.quem || '')}</td>
+      <td>${esc(i.desc || '')} ${i.manual ? '<span class="tag">lançado à mão</span> <a href="#" data-rm="' + esc(i.key) + '" class="muted">remover</a>' : (i.aberto ? '<span class="tag">ainda não paga</span>' : '')}</td>
+      <td class="muted">${esc(i.cat || '')}</td><td class="v">${brl(Number(i.integral))}</td><td class="v ${i.parte < 0 ? 'neg' : ''}"><b>${brl(Number(i.parte))}</b></td></tr>`).join('');
+  };
+  const nd = somaSel(e, 'ND'), nc = somaSel(e, 'NC'), saldo = nd - nc;
+  const dd = e.dados || {};
+  el('conteudo').innerHTML = `
+    <div class="cartao"><h2>${esc(e.nome)}</h2>
+      <div class="campos">
+        <label>Nº da nota de débito<input id="nND" type="number" value="${e.proxND}"></label>
+        <label>Nº da nota de crédito<input id="nNC" type="number" value="${e.proxNC}"></label>
+        <label>Emissão<input id="emissao" type="date" value="${hoje()}"></label>
+        <label>Vencimento<input id="venc" type="date" value="${hoje()}"></label>
+        <label>Referência<input id="ref" placeholder="ex.: out/26"></label>
+      </div>
+      <div class="resumo">
+        <div class="kpi"><span>Nota de débito (expert paga)</span><b>${brl(nd)}</b></div>
+        <div class="kpi"><span>Nota de crédito (Meraki paga)</span><b>${brl(nc)}</b></div>
+        <div class="kpi"><span>${saldo >= 0 ? 'Saldo a receber do expert' : 'Saldo a pagar ao expert'}</span><b style="color:${saldo >= 0 ? 'var(--pos)' : 'var(--neg)'}">${brl(Math.abs(saldo))}</b></div>
+      </div>
+      <div class="acoes"><button class="pri" id="emitir">Emitir notas e gerar PDFs</button><button id="jaCobrados">Marcar selecionados como já cobrados</button></div>
+      <div class="msg" id="msg"></div>
+    </div>
+    <div class="cartao"><h3>Itens na fila</h3>
+      <table><thead><tr><th></th><th>Competência</th><th>Fornecedor / cliente</th><th>Descrição</th><th>Categoria</th><th class="v">Valor integral</th><th class="v">Parte ${esc(e.nome)}</th></tr></thead>
+      <tbody id="itens">${tabela('ND', 'Nota de débito · despesas pagas pela Meraki (parte do expert)')}${tabela('NC', 'Nota de crédito · vendas na cota do expert e gastos pagos por ele')}</tbody></table>
+    </div>
+    <div class="cartao"><details><summary>Incluir item lançado à mão (ex.: prêmio, frete pago pelo expert)</summary>
+      <div class="campos" style="margin-top:10px">
+        <label>Nota<select id="mTipo"><option value="NC">Crédito (o expert pagou)</option><option value="ND">Débito</option></select></label>
+        <label>Data<input id="mData" type="date" value="${hoje()}"></label>
+        <label>Fornecedor<input id="mQuem"></label><label>Descrição<input id="mDesc"></label>
+        <label>Valor integral<input id="mInt" type="number" step="0.01"></label>
+        <label>% que vai na nota<input id="mPct" type="number" step="1" value="60"></label>
+      </div><div class="acoes" style="margin-top:10px"><button id="addManual">Incluir na fila</button></div></details></div>
+    <div class="cartao"><details><summary>Dados do expert para a nota</summary>
+      <div class="campos" style="margin-top:10px">
+        <label>Razão social<input id="dRazao" value="${esc(dd.razao || '')}"></label><label>CNPJ / CPF<input id="dCnpj" value="${esc(dd.cnpj || '')}"></label>
+        <label>Endereço<input id="dEnd" value="${esc(dd.endereco || '')}"></label><label>Banco, agência e conta<input id="dBanco" value="${esc(dd.banco || '')}"></label>
+        <label>Chave Pix<input id="dPix" value="${esc(dd.pix || '')}"></label>
+      </div><div class="acoes" style="margin-top:10px"><button id="salvarDados">Salvar dados</button></div></details></div>`;
+  ligar(e);
+}
+
+function ligar(e) {
+  el('itens').onchange = ev => {
+    const t = ev.target;
+    if (t.dataset.k) marcados[t.dataset.k] = t.checked;
+    if (t.dataset.todos) itensDe(e, t.dataset.todos).forEach(i => marcados[i.key] = t.checked);
+    desenhar();
+  };
+  el('itens').onclick = ev => { const a = ev.target.closest('[data-rm]'); if (a) { ev.preventDefault(); rodar('removerManual', a.dataset.rm).then(carregar); } };
+  el('emitir').onclick = () => {
+    const sel = t => itensDe(e, t).filter(i => marcados[i.key]).map(i => i.key);
+    const pedido = {expert: e.nome, itens: {ND: sel('ND'), NC: sel('NC')}, numeros: {ND: el('nND').value, NC: el('nNC').value},
+      emissao: el('emissao').value, vencimento: el('venc').value, referencia: el('ref').value};
+    if (!pedido.itens.ND.length && !pedido.itens.NC.length) { el('msg').textContent = 'Selecione pelo menos um item.'; return; }
+    el('emitir').disabled = true; el('msg').textContent = 'Gerando as notas…';
+    rodar('emitirNotas', pedido).then(r => {
+      el('msg').innerHTML = 'Pronto: ' + r.map(n => `<a href="${n.pdfUrl}" target="_blank">${n.tipo} ${n.numero} (${brl(n.total)})</a>`).join(' · ');
+      return carregar().then(() => { el('msg') && (el('msg').innerHTML = 'Pronto: ' + r.map(n => `<a href="${n.pdfUrl}" target="_blank">${n.tipo} ${n.numero} (${brl(n.total)})</a>`).join(' · ')); });
+    }).catch(err => { el('msg').textContent = err.message || err; el('emitir').disabled = false; });
+  };
+  el('jaCobrados').onclick = () => {
+    const keys = e.fila.filter(i => marcados[i.key]).map(i => i.key);
+    if (!keys.length) return;
+    if (!confirm(`Tirar ${keys.length} itens da fila como já cobrados (sem emitir nota)?`)) return;
+    rodar('marcarComoCobrados', keys, 'marcado como já cobrado').then(carregar);
+  };
+  el('addManual').onclick = () => {
+    const integral = Number(el('mInt').value), pct = Number(el('mPct').value) / 100, tipo = el('mTipo').value;
+    if (!integral || !el('mDesc').value) { alert('Preencha descrição e valor.'); return; }
+    rodar('adicionarManual', {expert: e.nome, tipo, data: el('mData').value, quem: el('mQuem').value, desc: el('mDesc').value, integral, parte: Math.round(integral * pct * 100) / 100}).then(carregar);
+  };
+  el('salvarDados').onclick = () => rodar('salvarDadosExpert', e.nome, {razao: el('dRazao').value, cnpj: el('dCnpj').value, endereco: el('dEnd').value, banco: el('dBanco').value, pix: el('dPix').value})
+    .then(() => { el('salvarDados').textContent = 'Salvo ✓'; carregar(); });
+}
+
+function desenharHistorico() {
+  const linhas = D.historico.map(n => `<tr><td><b>${n.tipo} ${n.numero}</b></td><td>${esc(n.expert)}</td><td>${dia(n.emissao)}</td><td>${esc(n.referencia || '')}</td>
+    <td class="v">${brl(n.total)}</td><td>${n.pdfUrl ? `<a href="${n.pdfUrl}" target="_blank">PDF</a>` : ''}</td>
+    <td>${n.cancelada ? '<span class="tag">cancelada</span>' : `<select data-id="${n.id}">${['emitida', 'enviada', 'paga', 'cancelada'].map(s => `<option ${s === n.status ? 'selected' : ''}>${s}</option>`).join('')}</select>`}</td></tr>`).join('');
+  el('conteudo').innerHTML = `<div class="cartao"><h2>Notas emitidas</h2>${linhas ? `<table><thead><tr><th>Nota</th><th>Expert</th><th>Emissão</th><th>Referência</th><th class="v">Total</th><th></th><th>Situação</th></tr></thead><tbody id="hist">${linhas}</tbody></table>` : '<div class="vazio">Nenhuma nota emitida pela central ainda.</div>'}</div>`;
+  const h = el('hist');
+  if (h) h.onchange = ev => {
+    const s = ev.target;
+    if (s.value === 'cancelada' && !confirm('Cancelar a nota devolve os itens para a fila. Continuar?')) { carregar(); return; }
+    rodar('mudarStatusNota', s.dataset.id, s.value).then(carregar);
+  };
+}
+
+el('lista').onclick = ev => { const x = ev.target.closest('[data-e]'); if (x) { atual = x.dataset.e; desenhar(); } };
+// abas da central: Cartões abre primeiro; a de notas carrega na primeira vez que for aberta
+let notasCarregadas = false;
+function abrirAba(a) {
+  document.querySelectorAll('#abas button[data-a]').forEach(b => b.classList.toggle('on', b.dataset.a === a));
+  el('aba-notas').hidden = a !== 'notas'; el('aba-cartoes').hidden = a !== 'cartoes';
+  if (a === 'notas' && !notasCarregadas) { notasCarregadas = true; carregar(); }
+  if (a === 'cartoes' && window.abrirCartoes) window.abrirCartoes();
+}
+el('abas').onclick = ev => { const b = ev.target.closest('[data-a]'); if (b) abrirAba(b.dataset.a); };
+</script>
+<style>
+#aba-cartoes { max-width: 1500px; margin: 0 auto; padding: 18px 28px 40px; }
+.cx-sub { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+.cx-sub button { border-radius: 999px; padding: 6px 14px; }
+.cx-sub button.on { background: var(--verde); color: #fff; border-color: var(--verde); }
+.cx-grade { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 18px; }
+@media (max-width: 900px) { .cx-grade { grid-template-columns: 1fr; } }
+.cx-cartoes { display: flex; flex-direction: column; gap: 6px; }
+.cx-cartao { background: var(--sup); border: 1px solid var(--linha); border-radius: 10px; padding: 10px 12px; cursor: pointer; }
+.cx-cartao.on { border-color: var(--verde); box-shadow: inset 3px 0 0 var(--verde); }
+.cx-cartao b { display: block; } .cx-cartao small { color: var(--tx3); font-size: 12px; display: block; }
+.cx-cartao .cx-v { font-family: Outfit, sans-serif; font-size: 16px; color: var(--tx); margin-top: 2px; }
+.cx-painel { background: var(--sup); border: 1px solid var(--linha); border-radius: 12px; padding: 16px; margin-bottom: 14px; overflow-x: auto; }
+.cx-grade > section { min-width: 0; }
+@media (max-width: 700px) { #aba-cartoes { padding: 14px 16px 30px; } .cx-kpis { grid-template-columns: 1fr; } .cx-form { grid-template-columns: 1fr 1fr; } }
+.cx-faturas { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.cx-faturas button { padding: 5px 11px; font-size: 12px; border-radius: 8px; }
+.cx-faturas button.on { border-color: var(--verde); color: var(--verde); font-weight: 600; box-shadow: inset 0 -2px 0 var(--verde); }
+.cx-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.cx-kpi { background: var(--sup2); border-radius: 10px; padding: 10px 12px; }
+.cx-kpi span { font-size: 12px; color: var(--tx2); } .cx-kpi b { display: block; font-size: 20px; font-family: Outfit, sans-serif; }
+.cx-kpi em { font-style: normal; font-size: 12px; }
+.ok { color: var(--pos); } .alerta { color: var(--neg); }
+.cx-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; align-items: end; }
+.cx-form label { min-width: 0; } .cx-form input, .cx-form select { width: 100%; min-width: 0; }
+.cx-form .cx-botoes { display: flex; gap: 6px; }
+.cx-dica { font-size: 12px; color: var(--tx3); margin-top: 6px; min-height: 16px; }
+.cx-acoes { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 4px 0 12px; }
+.cx-acoes .cx-dir { margin-left: auto; }
+table.cx-t td, table.cx-t th { padding: 5px 7px; font-size: 12.5px; }
+table.cx-t tr:hover td { background: #faf8f4; }
+.cx-st { font-size: 10.5px; padding: 1px 7px; border-radius: 999px; white-space: nowrap; display: inline-block; }
+.cx-st.v { background: var(--suave); color: #2b4a40; } .cx-st.a { background: #faeeda; color: #633806; } .cx-st.n { background: #f1efe8; color: #5f5e5a; }
+.cx-st.r { background: #fbe3d6; color: #8a3b0c; }
+.cx-lk { color: var(--verde); cursor: pointer; font-size: 12px; white-space: nowrap; }
+.cx-lk.neg { color: var(--neg); }
+.cx-modal { position: fixed; inset: 0; background: rgba(20, 28, 25, .35); display: flex; align-items: flex-start; justify-content: center; padding: 60px 16px; z-index: 50; overflow: auto; }
+.cx-modal > div { background: #fff; border-radius: 12px; padding: 18px 20px; width: min(760px, 100%); box-shadow: 0 12px 40px rgba(0,0,0,.18); }
+.cx-modal h3 { margin-top: 0; }
+.cx-barra { height: 8px; border-radius: 4px; background: var(--verde); display: inline-block; vertical-align: middle; }
+.cx-barra.e { background: var(--areia); }
+.cx-cfg input, .cx-cfg select { width: 100%; }
+.cx-cfg td { vertical-align: middle; }
+.cx-vazio { color: var(--tx3); padding: 8px 0; font-size: 13px; }
+details.cx-det summary { cursor: pointer; color: var(--tx2); font-size: 13px; font-weight: 600; margin: 8px 0; }
+</style>
+
+<div id="aba-cartoes" hidden>
+  <div class="cx-sub" id="cxSub">
+    <button data-v="faturas" class="on">Faturas</button><button data-v="projetos">Gastos por projeto</button><button data-v="config">Configurar</button>
+  </div>
+  <div id="cxCorpo"><div class="vazio">Carregando…</div></div>
+</div>
+<input type="file" id="cxArquivo" accept="application/pdf" multiple hidden>
+
+<script>
+// Leitura de PDFs no navegador (pdf.js): faturas de cartão Itaú (Empresas e Azul/Itaucard) e relatórios de cobrança do Meta.
+// Tudo acontece no computador de quem sobe o arquivo; só o resultado (as linhas) vai para a nuvem.
+
+async function linhasDoPdf(pdfjsLib, dados) {
+  const doc = await pdfjsLib.getDocument({data: dados}).promise;
+  const out = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const pg = await doc.getPage(p);
+    const tc = await pg.getTextContent();
+    const its = tc.items.filter(i => i.str && i.str.trim()).map(i => ({s: i.str, x: i.transform[4], y: i.transform[5], w: i.width}));
+    // faturas em duas colunas: a coluna da direita começa onde fica o segundo cabeçalho "DATA"
+    const xs = its.filter(i => /^DATA(\s|$)/.test(i.s.trim())).map(i => i.x);
+    const corte = xs.length && Math.max(...xs) - Math.min(...xs) > 100 ? Math.max(...xs) - 5 : null;
+    const blocos = corte ? [its.filter(i => i.x < corte), its.filter(i => i.x >= corte)] : [its];
+    blocos.forEach(bl => {
+      const grupos = [];
+      bl.forEach(i => {
+        const g = grupos.find(g => Math.abs(g.y - i.y) < 2.5);
+        if (g) g.its.push(i); else grupos.push({y: i.y, its: [i]});
+      });
+      grupos.sort((a, b) => b.y - a.y);
+      grupos.forEach(g => {
+        g.its.sort((a, b) => a.x - b.x);
+        let t = '', fim = null;
+        g.its.forEach(i => { t += (fim !== null && i.x - fim > 1.5 ? ' ' : '') + i.s; fim = i.x + i.w; });
+        out.push(t.replace(/\s+/g, ' ').trim());
+      });
+    });
+  }
+  return out;
+}
+
+const numBR = s => Number(String(s).replace(/R\$\s?/g, '').replace(/\./g, '').replace(',', '.'));
+const dataISO = s => { const [d, m, a] = s.split('/'); return a + '-' + m + '-' + d; };
+
+// data da compra (dd/mm) → ano certo, olhando o vencimento da fatura (compras parceladas podem ser de muitos meses antes)
+function anoDaCompra(ddmm, venc) {
+  const [d, m] = ddmm.split('/').map(Number), [va, vm] = venc.split('-').map(Number);
+  const ano = m > vm ? va - 1 : va;
+  return ano + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+}
+
+function parcelaDe(desc) {
+  const m = desc.match(/(\d{2})\/(\d{2})\s*$/);
+  return m && Number(m[2]) > 1 && Number(m[1]) <= Number(m[2]) ? Number(m[1]) + '/' + Number(m[2]) : '';
+}
+
+function lerFatura(linhas) {
+  const txt = linhas.join('\n');
+  const r = {tipo: null, venc: null, total: null, final: null, itens: []};
+  let m;
+  if (/ITAU EMPRESAS/i.test(txt)) {
+    r.tipo = 'Itaú Empresas';
+    const i = linhas.findIndex(l => /vencimento:/i.test(l));
+    if (i >= 0 && (m = linhas[i + 1].match(/(\d{2}\/\d{2}\/\d{4})/))) r.venc = dataISO(m[1]);
+    if ((m = txt.match(/Total da fatura R\$\s?([\d.]+,\d{2})/))) r.total = numBR(m[1]);
+    if ((m = txt.match(/X{4}\.X{4}\.(\d{4})/))) r.final = m[1];
+    let ativo = false, portador = '', secao = '';
+    linhas.forEach(l => {
+      if (l === 'Lançamentos') { ativo = true; return; }
+      if (!ativo) return;
+      if (/^Encargos desta fatura/.test(l)) { ativo = false; return; }
+      if ((m = l.match(/FINAL (\d{4})$/))) { portador = m[1]; return; }
+      if (/^Lançamentos internacionais/.test(l)) secao = 'internacional';
+      else if (/^Lançamentos nacionais/.test(l)) secao = 'nacional';
+      else if (/^Produtos, serviços/.test(l)) secao = 'produtos';
+      if ((m = l.match(/^(\d{2}\/\d{2}) (.+?) (-?R\$\s?-?[\d.]+,\d{2})$/))) {
+        let desc = m[2];
+        if (secao === 'internacional') desc = desc.replace(/\s+(BRL|USD|EUR)[\d.,]+.*$/, '');
+        r.itens.push({data: m[1], desc: desc.trim(), valor: numBR(m[3].replace('-R$', 'R$-')), cartao: portador, secao});
+      } else if ((m = l.match(/^Repasse de IOF R\$\s?([\d.]+,\d{2})$/)) && numBR(m[1])) {
+        const ult = r.itens[r.itens.length - 1];
+        r.itens.push({data: ult ? ult.data : '', desc: 'Repasse de IOF', valor: numBR(m[1]), cartao: portador, secao: 'internacional'});
+      }
+    });
+  } else if (/Lançamentos: compras e saques/.test(txt)) {
+    r.tipo = 'Itaucard';
+    if ((m = txt.match(/Vencimento:\s*(\d{2}\/\d{2}\/\d{4})/))) r.venc = dataISO(m[1]);
+    if ((m = txt.match(/Total desta fatura\s*([\d.]+,\d{2})/))) r.total = numBR(m[1]);
+    if ((m = txt.match(/Cartão \d{4}\.X{4}\.X{4}\.(\d{4})/))) r.final = m[1];
+    let secao = '', portador = '', ultData = '';
+    linhas.forEach((l, i) => {
+      if (/^Pagamentos efetuados/.test(l)) { secao = 'pagamentos'; return; }
+      if (/^Lançamentos: compras e saques/.test(l)) { secao = 'nacional'; return; }
+      if (/^Lançamentos internacionais/.test(l)) { secao = 'internacional'; return; }
+      if (/^Lançamentos: produtos e serviços/.test(l)) { secao = 'produtos'; return; }
+      if (/^(Total dos lançamentos atuais|Compras parceladas - próximas faturas|Limites de crédito)/.test(l)) { secao = ''; return; }
+      if (!secao || secao === 'pagamentos') return;
+      if (/^DATA /.test(l) && i > 0 && /^[A-ZÁÉÍÓÚÂÊÔÃÕÇ ]{6,}$/.test(linhas[i - 1])) portador = linhas[i - 1];
+      // (às vezes sobra um caractere solto do layout depois do valor, como "." ou "L")
+      if ((m = l.match(/^(\d{2}\/\d{2}) (.+?) (-?[\d.]+,\d{2})(?: \S)?$/))) {
+        ultData = m[1];
+        r.itens.push({data: m[1], desc: m[2].trim(), valor: numBR(m[3]), cartao: portador, secao});
+      } else if ((m = l.match(/^Repasse de IOF em R\$\s*([\d.]+,\d{2})$/)) && numBR(m[1])) {
+        r.itens.push({data: ultData, desc: 'Repasse de IOF', valor: numBR(m[1]), cartao: portador, secao: 'internacional'});
+      }
+    });
+  } else return null;
+  r.itens.forEach(it => { it.parcela = parcelaDe(it.desc); if (r.venc && it.data) it.data = anoDaCompra(it.data, r.venc); it.valor = Math.round(it.valor * 100) / 100; });
+  r.soma = Math.round(r.itens.reduce((s, i) => s + i.valor, 0) * 100) / 100;
+  return r;
+}
+
+// relatório de cobrança do Meta (Facebook): cada cobrança com data, final do cartão e valor, e o negócio (expert)
+function lerRelatorioMeta(linhas) {
+  const txt = linhas.join('\n');
+  if (!/Pagamento de Anúncios da Meta|Relatório de cobrança/.test(txt)) return null;
+  let m;
+  const r = {negocio: (m = txt.match(/Negócio:\s*(.+)/)) ? m[1].trim() : '', conta: (m = txt.match(/Conta:\s*(\d+)/)) ? m[1] : '',
+    periodo: (m = txt.match(/Relatório de cobrança:\s*(\S+ a \S+)/)) ? m[1] : '', cobrancas: []};
+  linhas.forEach(l => {
+    if ((m = l.match(/(\d{2}\/\d{2}\/\d{4}).*?(\d{4})\s+R\$\s?([\d.]+,\d{2})\s+\w+\s+(\w+)/))) {
+      r.cobrancas.push({data: dataISO(m[1]), final: m[2], valor: numBR(m[3]), status: m[4]});
+    }
+  });
+  if ((m = txt.match(/Valor total cobrado\s+R\$\s?([\d.]+,\d{2})/))) r.total = numBR(m[1]);
+  r.soma = Math.round(r.cobrancas.filter(c => c.status === 'Pago').reduce((s, c) => s + c.valor, 0) * 100) / 100;
+  return r;
+}
+
+if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, lerRelatorioMeta};
+
+</script>
+
+<script>
+(function () {
+  // leitor de PDF (pdf.js) só é carregado quando alguém vai importar um arquivo
+  const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+  function carregarPdfJs() {
+    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    return new Promise((ok, falha) => {
+      const sc = document.createElement('script');
+      if (window.__NONCE) sc.nonce = window.__NONCE;
+      sc.src = PDFJS + 'pdf.min.js';
+      sc.onload = () => { if (!window.pdfjsLib) return falha(new Error('Leitor de PDF não carregou.')); pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js'; ok(window.pdfjsLib); };
+      sc.onerror = () => falha(new Error('Leitor de PDF não carregou (sem internet?).'));
+      setTimeout(() => falha(new Error('Leitor de PDF demorou demais para carregar.')), 20000);
+      document.head.appendChild(sc);
+    });
+  }
+  let C = null, vista = 'faturas', cartaoSel = null, vencSel = null, editando = null, prefill = null;
+  const r2 = v => Math.round(v * 100) / 100;
+  const v2 = v => Math.abs(v) < 0.005;
+  const mesAno = iso => { const [a, m] = iso.split('-'); return ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'][Number(m) - 1] + '/' + a.slice(2); };
+  const dias = (a, b) => Math.abs((new Date(a) - new Date(b)) / 864e5);
+  const semAc = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+  window.abrirCartoes = function () { if (!C) carregarCartoes(); };
+
+  function carregarCartoes() {
+    return rodar('dadosCartoes').then(d => {
+      C = d;
+      if (!cartaoSel || !C.base.cartoes.some(c => c.id === cartaoSel)) cartaoSel = (C.base.cartoes.find(c => c.ativo) || {}).id;
+      desenharCartoes();
+    }).catch(e => { el('cxCorpo').innerHTML = `<div class="cx-painel neg">${esc(e.message || e)}</div>`; });
+  }
+
+  // ---------- regras de negócio (as mesmas da nuvem) ----------
+  const cartao = id => C.base.cartoes.find(c => c.id === id) || {};
+  const projeto = n => C.base.projetos.find(p => p.nome === n);
+
+  function vencDe(cid, dataISO) {
+    const c = cartao(cid);
+    if (!c.fech || !dataISO) return '';
+    let [a, m, d] = dataISO.split('-').map(Number);
+    if (d >= c.fech) { m++; if (m > 12) { m = 1; a++; } }       // comprou no dia do fechamento ou depois: próxima fatura
+    if (c.venc < c.fech) { m++; if (m > 12) { m = 1; a++; } }    // vencimento cai no mês seguinte ao fechamento
+    return a + '-' + String(m).padStart(2, '0') + '-' + String(c.venc).padStart(2, '0');
+  }
+
+  function rotuloCentro(centro) {
+    const [t, a, b] = String(centro || 'M').split('|');
+    if (t === 'M') return 'Meraki';
+    if (t === 'R') return 'Rateio · ' + a.split(',').join(', ');
+    const p = projeto(a) || {parte: 50};
+    return a + ' · ' + (b === 'm' ? 'só Meraki' : b === 'e' ? 'só expert' : p.parte + '/' + (100 - p.parte));
+  }
+
+  function dividir(centro, valor) {
+    const partes = [], [t, a, b] = String(centro || 'M').split('|');
+    const por = (n, modo, v) => {
+      const p = projeto(n) || {nome: n, parte: 50};
+      if (modo === 'm') partes.push([n, 'meraki', v]); else if (modo === 'e') partes.push([n, 'expert', v]);
+      else { const vm = Math.round(v * p.parte) / 100; partes.push([n, 'meraki', vm], [n, 'expert', r2(v - vm)]); }
+    };
+    if (t === 'M') partes.push(['Meraki', 'meraki', valor]);
+    else if (t === 'P') por(a, b || 'd', valor);
+    else { const ns = a.split(','), cota = Math.floor(valor * 100 / ns.length) / 100; ns.forEach((n, i) => por(n, 'd', i === ns.length - 1 ? r2(valor - cota * (ns.length - 1)) : cota)); }
+    return partes;
+  }
+
+  // centros de custo de um lançamento do Conta Azul → projeto da central
+  function centroDoCA(partes) {
+    const ps = new Set(), lados = {};
+    (partes || []).forEach(([, cc]) => {
+      const p = C.base.projetos.find(p => p.meraki === cc || p.expert === cc);
+      if (!p) return;
+      ps.add(p.nome); lados[p.nome] = (lados[p.nome] || '') + (p.meraki === cc ? 'm' : 'e');
+    });
+    if (!ps.size) return 'M';
+    if (ps.size > 1) return 'R|' + [...ps].join(',');
+    const n = [...ps][0], l = lados[n];
+    return 'P|' + n + '|' + (l.includes('m') && l.includes('e') ? 'd' : l);
+  }
+
+  // chave do texto da fatura: 'FACEBK *C6Q9BA6JT4' → 'FACEBK' (ignora códigos com número)
+  const chaveFatura = desc => semAc(desc).toUpperCase().split(/[\s*\-_/.]+/).filter(t => t.length >= 3 && !/\d/.test(t)).slice(0, 2).join(' ');
+
+  // casa duas listas pelo valor: 1 para 1, depois um item = soma de vários (agrupados), depois itens que se anulam
+  function casar(A, B, janela) {
+    const usA = new Set(), usB = new Set(), pares = [];
+    const cand = [];
+    // parcelas: a data é a da compra original (e às vezes digitada com o ano trocado), então vale só o valor
+    A.forEach((a, i) => B.forEach((b, j) => { if (v2(a.valor - b.valor) && (dias(a.data, b.data) <= 45 || a.parcela || b.parcela)) cand.push([dias(a.data, b.data) + (a.parcela && a.parcela === b.parcela ? -1e4 : 0), i, j]); }));
+    cand.sort((x, y) => x[0] - y[0]).forEach(([, i, j]) => { if (!usA.has(i) && !usB.has(j)) { usA.add(i); usB.add(j); pares.push([[i], [j]]); } });
+    const grupo = (X, usX, Y, usY, inverter) => X.forEach((x, i) => {
+      if (usX.has(i)) return;
+      const ys = Y.map((y, j) => j).filter(j => !usY.has(j) && dias(X[i].data, Y[j].data) <= janela);
+      const achar = (ini, falta, esc, n) => {
+        if (esc.length >= 2 && v2(falta)) return esc;
+        if (n === 0) return null;
+        for (let k = ini; k < ys.length; k++) { const r = achar(k + 1, r2(falta - Y[ys[k]].valor), esc.concat(ys[k]), n - 1); if (r) return r; }
+        return null;
+      };
+      if (ys.length > 40) return;
+      const r = achar(0, x.valor, [], 4);
+      if (r) { usX.add(i); r.forEach(j => usY.add(j)); pares.push(inverter ? [r, [i]] : [[i], r]); }
+    });
+    grupo(A, usA, B, usB, false);
+    grupo(B, usB, A, usA, true);
+    // itens da lista B que se anulam entre si (ex.: anuidade e o estorno dela)
+    const anulados = [];
+    const rb = () => B.map((b, j) => j).filter(j => !usB.has(j));
+    rb().forEach(j => { if (usB.has(j)) return; const k = rb().find(k => k !== j && v2(B[j].valor + B[k].valor)); if (k !== undefined) { usB.add(j); usB.add(k); anulados.push(j, k); } });
+    const r3 = rb();  // de três em três (ex.: mensalidade 105,00 e dois descontos de 52,50)
+    for (let x = 0; x < r3.length; x++) for (let y = x + 1; y < r3.length; y++) for (let z = y + 1; z < r3.length; z++) {
+      const t = [r3[x], r3[y], r3[z]];
+      if (t.some(j => usB.has(j))) continue;
+      if (v2(B[t[0]].valor + B[t[1]].valor + B[t[2]].valor)) { t.forEach(j => usB.add(j)); anulados.push(...t); }
+    }
+    return {pares, sobraA: A.map((a, i) => i).filter(i => !usA.has(i)), sobraB: B.map((b, j) => j).filter(j => !usB.has(j)), anulados};
+  }
+
+  // monta a visão de uma fatura: lançamentos da central x PDF x Conta Azul
+  function situacao(cid, venc) {
+    const L = C.base.lancamentos.filter(l => l.cartao === cid && l.venc === venc).sort((a, b) => a.data.localeCompare(b.data));
+    const F = (C.base.faturas[cid + '|' + venc] || {});
+    const itensF = F.itens || [];
+    const CA = C.ca.filter(x => x.cartao === cid && x.venc === venc).map(x => Object.assign({data: x.comp}, x));
+    const est = {};
+    L.forEach(l => est[l.id] = {fatura: null, ca: null});
+    const mf = casar(L, itensF, 31);
+    mf.pares.forEach(([ia, ib]) => ia.forEach(i => est[L[i].id].fatura = ib.map(j => itensF[j])));
+    // Conta Azul: primeiro pelo que a central mesmo enviou, depois pelo valor
+    const Lr = L.filter(l => !(l.caParcela && CA.some(x => x.id === l.caParcela)));
+    const CAr = CA.filter(x => !L.some(l => l.caParcela === x.id));
+    // ligado a um lançamento do Conta Azul: se o valor mudou na central, o envio corrige o valor lá
+    L.forEach(l => { const x = l.caParcela && CA.find(x => x.id === l.caParcela); if (x) est[l.id].ca = v2(x.valor - l.valor) ? 'enviado' : {ajustar: x}; });
+    const mc = casar(Lr, CAr, 31);
+    mc.pares.forEach(([ia, ib]) => ia.forEach(i => est[Lr[i].id].ca = ib.map(j => CAr[j])));
+    // o que sobrou dos dois lados soma o mesmo valor: foi lançado no Conta Azul agrupado de outro jeito (não reenviar)
+    const sobraL = mc.sobraA.map(i => Lr[i]), sobraC = mc.sobraB.map(j => CAr[j]);
+    if (sobraL.length && sobraC.length && v2(sobraL.reduce((s, l) => s + l.valor, 0) - sobraC.reduce((s, x) => s + x.valor, 0))) {
+      sobraL.forEach(l => est[l.id].ca = sobraC);
+      mc.sobraB = [];
+    }
+    // mesmo fornecedor, valor diferente (ex.: assinatura lançada com valor estimado no Conta Azul): não reenviar, só avisar
+    mc.sobraB = mc.sobraB.filter(j => {
+      const x = CAr[j], l = Lr.find(l => !est[l.id].ca && semAc(l.fornecedor) === semAc(x.quem) && dias(l.data, x.comp) <= 45);
+      if (!l) return true;
+      est[l.id].ca = {ajustar: x};
+      return false;
+    });
+    L.forEach(l => { if (l.caId && !est[l.id].ca) est[l.id].ca = 'enviado'; });
+    const meta = sugestoesMeta(cid);
+    const soFatura = mf.sobraB.map(j => sugestao(itensF[j], cid, venc, meta));
+    return {L, F, itensF, CA, est, soFatura, anulados: mf.anulados.map(j => itensF[j]), caSobra: mc.sobraB.map(j => CAr[j]),
+      totL: r2(L.reduce((s, l) => s + l.valor, 0)), totCA: r2(CA.reduce((s, x) => s + x.valor, 0))};
+  }
+
+  function sugestoesMeta(cid) {
+    const c = cartao(cid), out = [];
+    Object.values(C.base.meta || {}).forEach(r => {
+      const p = r.projeto || (C.base.projetos.find(p => (p.meta || []).includes(r.negocio)) || {}).nome;
+      r.cobrancas.forEach(x => { if (x.status === 'Pago' && (c.finais || []).includes(x.final)) out.push(Object.assign({projeto: p}, x)); });
+    });
+    return out;
+  }
+
+  function sugestao(it, cid, venc, meta) {
+    const k = chaveFatura(it.desc);
+    let fornecedor = C.base.padroes[k] || (/^(FACEBK|METAPAY)/.test(k) ? 'Facebook' : '');
+    if (/^IOF|REPASSE IOF/.test(k)) fornecedor = 'IOF';
+    const regra = C.base.regras[fornecedor] || {};
+    let centro = fornecedor === 'Facebook' ? '' : (regra.centro || '');
+    const m = fornecedor === 'Facebook' && meta.find(x => v2(x.valor - it.valor) && dias(x.data, it.data) <= 1);
+    if (m && m.projeto) centro = 'P|' + m.projeto + '|d';
+    const s = {item: it, chave: k, cartao: cid, venc, data: it.data, valor: it.valor, fornecedor, categoria: regra.categoria || '',
+      descricao: (regra.descricao || '') + (it.parcela && regra.descricao ? ' - ' + it.parcela : ''), parcela: it.parcela || '', centro, metaProj: m && m.projeto};
+    s.pronta = !!(s.fornecedor && s.categoria && s.centro && s.valor > 0);
+    return s;
+  }
+
+  // ---------- telas ----------
+  function desenharCartoes() {
+    document.querySelectorAll('#cxSub button').forEach(b => b.classList.toggle('on', b.dataset.v === vista));
+    if (vista === 'projetos') return telaProjetos();
+    if (vista === 'config') return telaConfig();
+    telaFaturas();
+  }
+
+  function faturasDoCartao(cid) {
+    const s = new Set();
+    C.base.lancamentos.forEach(l => l.cartao === cid && s.add(l.venc));
+    Object.values(C.base.faturas).forEach(f => f.cartao === cid && s.add(f.venc));
+    C.ca.forEach(x => x.cartao === cid && s.add(x.venc));
+    const aberta = vencDe(cid, hoje());
+    if (aberta) s.add(aberta);
+    // parcelas futuras já lançadas no Conta Azul não entram na lista (até a fatura seguinte à aberta)
+    const limite = aberta ? vencDe(cid, aberta) : '9999';
+    return {lista: [...s].filter(v => v && v <= limite).sort().reverse().slice(0, 8), aberta};
+  }
+
+  function telaFaturas() {
+    const ativos = C.base.cartoes.filter(c => c.ativo);
+    const {lista, aberta} = faturasDoCartao(cartaoSel);
+    if (!vencSel || !lista.includes(vencSel)) vencSel = aberta;
+    const S = situacao(cartaoSel, vencSel), c = cartao(cartaoSel);
+    const enviaveis = S.L.filter(l => S.est[l.id].fatura && (!S.est[l.id].ca || S.est[l.id].ca.ajustar) && l.valor > 0);
+    const prontas = S.soFatura.filter(s => s.pronta);
+    const kpiFat = S.F.total != null ? brl(S.F.total) : '—';
+    const difF = S.F.total != null ? r2(S.totL - S.F.total) : null, difC = r2(S.totCA - S.totL);
+    el('cxCorpo').innerHTML = `<div class="cx-grade">
+      <aside class="cx-cartoes">${ativos.map(x => {
+        const ab = vencDe(x.id, hoje()), tot = r2(C.base.lancamentos.filter(l => l.cartao === x.id && l.venc === ab).reduce((s, l) => s + l.valor, 0));
+        return `<div class="cx-cartao ${x.id === cartaoSel ? 'on' : ''}" data-c="${x.id}"><b>${esc(x.nome)}</b><small>fecha dia ${x.fech} · vence dia ${x.venc}</small>
+          <div class="cx-v">${brl(tot)}</div><small>fatura de ${ab ? dia(ab).slice(0, 5) : '—'}${x.conta ? '' : ' · <span class="alerta">sem conta no Conta Azul</span>'}</small></div>`;
+      }).join('')}</aside>
+      <section>
+        <div class="cx-painel">
+          <div class="cx-faturas">${lista.map(v => `<button data-f="${v}" class="${v === vencSel ? 'on' : ''}">${mesAno(v)} · ${dia(v).slice(0, 5)}${v === aberta ? ' · aberta' : ''}</button>`).join('')}</div>
+          <div class="cx-kpis">
+            <div class="cx-kpi"><span>Lançado na central</span><b>${brl(S.totL)}</b><em class="muted">${S.L.length} lançamentos</em></div>
+            <div class="cx-kpi"><span>Fatura do banco</span><b>${kpiFat}</b><em class="${difF === null ? 'muted' : v2(difF) ? 'ok' : 'alerta'}">${difF === null ? 'PDF ainda não importado' : v2(difF) ? 'bate com a central' : 'diferença de ' + brl(difF)}</em></div>
+            <div class="cx-kpi"><span>No Conta Azul</span><b>${brl(S.totCA)}</b><em class="${v2(difC) ? 'ok' : 'muted'}">${v2(difC) ? 'tudo lançado' : 'faltam ' + brl(-difC)}</em></div>
+          </div>
+          ${formLancamento(c)}
+        </div>
+        <div class="cx-painel">
+          <div class="cx-acoes">
+            <button id="cxPdf">Importar PDF (fatura ou relatório do Meta)</button>
+            ${prontas.length ? `<button id="cxSugeridos">Lançar ${prontas.length} da fatura com sugestão completa</button>` : ''}
+            <button class="pri cx-dir" id="cxEnviar" ${enviaveis.length ? '' : 'disabled'}>Enviar ${enviaveis.length} conferidos ao Conta Azul</button>
+          </div>
+          <div class="msg" id="cxMsg"></div>
+          ${tabelaLancamentos(S)}
+          ${S.soFatura.length ? tabelaSoFatura(S) : ''}
+          ${S.anulados.length ? `<details class="cx-det"><summary>Itens da fatura que se anulam (${S.anulados.length})</summary><table class="cx-t">${S.anulados.map(i => `<tr><td>${dia(i.data)}</td><td>${esc(i.desc)}</td><td class="v">${brl(i.valor)}</td></tr>`).join('')}</table></details>` : ''}
+          ${S.caSobra.length ? `<details class="cx-det"><summary>No Conta Azul e não na central (${S.caSobra.length} · ${brl(r2(S.caSobra.reduce((s, x) => s + x.valor, 0)))})</summary><table class="cx-t">${S.caSobra.map(i => `<tr><td>${dia(i.comp)}</td><td>${esc(i.quem || '')}</td><td>${esc(i.desc || '')}</td><td class="muted">${esc(rotuloCentro(centroDoCA(i.partes)))}</td><td class="v">${brl(i.valor)}</td><td><span class="cx-lk" data-tz="${i.id}">trazer para a central</span></td></tr>`).join('')}</table></details>` : ''}
+        </div>
+      </section></div>`;
+    ligarFaturas(S, prontas, enviaveis);
+  }
+
+  function opcoesCentro(sel) {
+    const ps = C.base.projetos.filter(p => p.ativo || (sel && sel.indexOf('|' + p.nome + '|') >= 0));
+    const o = (v, t) => `<option value="${esc(v)}" ${v === sel ? 'selected' : ''}>${esc(t)}</option>`;
+    let h = `<option value="">— escolha —</option>` + o('M', 'Meraki');
+    ps.forEach(p => { h += `<optgroup label="${esc(p.nome)}">` + o('P|' + p.nome + '|d', p.nome + ' · ' + p.parte + '/' + (100 - p.parte)) + o('P|' + p.nome + '|m', p.nome + ' · só Meraki') + o('P|' + p.nome + '|e', p.nome + ' · só expert') + '</optgroup>'; });
+    const ult = sel && sel[0] === 'R' ? sel : (C.base.lancamentos.slice().reverse().find(l => (l.centro || '')[0] === 'R') || {}).centro;
+    if (ult) h += o(ult, rotuloCentro(ult));
+    h += `<option value="R?">Rateio entre projetos…</option>`;
+    return h;
+  }
+
+  function formLancamento(c) {
+    const l = editando || prefill || {};
+    const cats = C.catalogo.categorias.length ? C.catalogo.categorias : Object.values(C.base.regras).map(r => r.categoria).filter((v, i, a) => v && a.indexOf(v) === i);
+    return `<div class="cx-form" id="cxForm">
+      <label>Data da compra<input type="date" id="fData" value="${esc(l.data || hoje())}"></label>
+      <label>Fornecedor<input id="fForn" list="cxFornLista" value="${esc(l.fornecedor || '')}" autocomplete="off"></label>
+      <label>Valor<input id="fValor" type="number" step="0.01" value="${l.valor != null ? l.valor : ''}"></label>
+      <label>Projeto<select id="fCentro">${opcoesCentro(l.centro || '')}</select></label>
+      <label>Categoria<select id="fCat"><option value=""></option>${cats.map(x => `<option ${x === l.categoria ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
+      <label>Descrição<input id="fDesc" value="${esc(l.descricao || '')}"></label>
+      <label>Parcela<input id="fParc" placeholder="ex.: 3/12" value="${esc(l.parcela || '')}"></label>
+      <label>Fatura<select id="fVenc"></select></label>
+      <div class="cx-botoes"><button class="pri" id="fSalvar">${editando ? 'Salvar' : 'Adicionar'}</button>${editando || prefill ? '<button id="fCancelar">Cancelar</button>' : ''}</div>
+    </div>
+    <datalist id="cxFornLista">${[...new Set(Object.keys(C.base.regras).concat(C.catalogo.fornecedores))].map(f => `<option value="${esc(f)}">`).join('')}</datalist>
+    <div class="cx-dica" id="fDica"></div>`;
+  }
+
+  function tabelaLancamentos(S) {
+    if (!S.L.length) return '<div class="cx-vazio">Nenhum lançamento nesta fatura.</div>';
+    const forns = new Set(C.catalogo.fornecedores);
+    return `<table class="cx-t"><thead><tr><th>Data</th><th>Fornecedor</th><th>Descrição</th><th>Projeto</th><th>Categoria</th><th class="v">Valor</th><th>Fatura</th><th>Conta Azul</th><th></th></tr></thead><tbody id="cxLinhas">
+      ${S.L.map(l => {
+        const e = S.est[l.id];
+        const stF = e.fatura ? `<span class="cx-st v" title="${esc(e.fatura.map(i => i.desc + ' ' + brl(i.valor)).join(' + '))}">confere${e.fatura.length > 1 ? ' (' + e.fatura.length + ' linhas)' : ''}</span>` : S.F.total != null ? '<span class="cx-st r">não está na fatura</span>' : '<span class="cx-st n">aguardando</span>';
+        const stC = e.ca === 'enviado' ? '<span class="cx-st v">enviado</span>' : e.ca && e.ca.ajustar ? `<span class="cx-st r" title="${esc(e.ca.ajustar.desc)}">Conta Azul tem ${brl(e.ca.ajustar.valor)}</span>` : e.ca ? `<span class="cx-st v" title="${esc(e.ca.map(x => x.desc + ' ' + brl(x.valor)).join(' + '))}">lançado</span>`
+          : e.fatura ? '<span class="cx-st a">pronto para enviar</span>' + (!forns.has(l.fornecedor) && C.catalogo.fornecedores.length ? ' <span class="cx-st n">fornecedor novo</span>' : '') : '<span class="cx-st n">—</span>';
+        const trava = !!(l.caId);
+        return `<tr><td>${dia(l.data)}</td><td>${esc(l.fornecedor)}</td><td>${esc(l.descricao)}${l.parcela && l.descricao.indexOf(l.parcela) < 0 ? ' <span class="muted">' + esc(l.parcela) + '</span>' : ''}</td>
+          <td>${esc(rotuloCentro(l.centro))}</td><td class="muted">${esc(l.categoria)}</td><td class="v ${l.valor < 0 ? 'neg' : ''}">${brl(l.valor)}</td><td>${stF}</td><td>${stC}</td>
+          <td>${trava ? '' : `<span class="cx-lk" data-ed="${l.id}">editar</span> · <span class="cx-lk neg" data-rm="${l.id}">excluir</span>`}</td></tr>`;
+      }).join('')}</tbody></table>`;
+  }
+
+  function tabelaSoFatura(S) {
+    return `<h3 style="margin-top:18px">Na fatura e ainda não lançado (${S.soFatura.length})</h3>
+      <table class="cx-t"><thead><tr><th>Data</th><th>Texto na fatura</th><th>Sugestão</th><th>Projeto</th><th class="v">Valor</th><th></th></tr></thead><tbody id="cxSoFat">
+      ${S.soFatura.map((s, i) => `<tr><td>${dia(s.data)}</td><td>${esc(s.item.desc)}${s.item.cartao ? ' <span class="muted">' + esc(String(s.item.cartao).slice(0, 14)) + '</span>' : ''}</td>
+        <td>${s.fornecedor ? esc(s.fornecedor) + (s.categoria ? ' <span class="muted">· ' + esc(s.categoria) + '</span>' : '') : '<span class="muted">—</span>'}</td>
+        <td>${s.centro ? esc(rotuloCentro(s.centro)) + (s.metaProj ? ' <span class="cx-st v">Meta</span>' : '') : '<span class="muted">—</span>'}</td>
+        <td class="v ${s.valor < 0 ? 'neg' : ''}">${brl(s.valor)}</td><td><span class="cx-lk" data-pf="${i}">lançar…</span></td></tr>`).join('')}</tbody></table>`;
+  }
+
+  function ligarFaturas(S, prontas, enviaveis) {
+    el('cxCorpo').querySelector('.cx-cartoes').onclick = ev => { const x = ev.target.closest('[data-c]'); if (x) { cartaoSel = x.dataset.c; vencSel = null; editando = prefill = null; desenharCartoes(); } };
+    el('cxCorpo').querySelector('.cx-faturas').onclick = ev => { const x = ev.target.closest('[data-f]'); if (x) { vencSel = x.dataset.f; desenharCartoes(); } };
+    ligarForm(S);
+    const linhas = el('cxLinhas');
+    if (linhas) linhas.onclick = ev => {
+      const ed = ev.target.closest('[data-ed]'), rm = ev.target.closest('[data-rm]');
+      if (ed) { editando = C.base.lancamentos.find(l => l.id === ed.dataset.ed); prefill = null; desenharCartoes(); el('fValor').focus(); }
+      if (rm && confirm('Excluir este lançamento da central?')) rodar('excluirLancamentos', [rm.dataset.rm]).then(carregarCartoes).catch(erro);
+    };
+    const sf = el('cxSoFat');
+    if (sf) sf.onclick = ev => { const x = ev.target.closest('[data-pf]'); if (x) { prefill = S.soFatura[Number(x.dataset.pf)]; editando = null; desenharCartoes(); el('cxForm').scrollIntoView({block: 'center'}); } };
+    el('cxPdf').onclick = () => el('cxArquivo').click();
+    if (el('cxSugeridos')) el('cxSugeridos').onclick = () => {
+      const tot = r2(prontas.reduce((s, p) => s + p.valor, 0));
+      if (!confirm(`Lançar na central ${prontas.length} itens da fatura (${brl(tot)}) com o fornecedor, categoria e projeto sugeridos?`)) return;
+      rodar('salvarLancamentos', prontas.map(p => ({cartao: p.cartao, venc: p.venc, data: p.data, valor: p.valor, fornecedor: p.fornecedor, categoria: p.categoria,
+        descricao: p.descricao, parcela: p.parcela, centro: p.centro, origem: 'fatura', padrao: p.chave}))).then(carregarCartoes).catch(erro);
+    };
+    el('cxEnviar').onclick = () => enviar(enviaveis);
+    // lançamento feito direto no Conta Azul e que falta na central: entra já marcado como lançado (não é reenviado)
+    el('cxCorpo').querySelectorAll('[data-tz]').forEach(a => a.onclick = () => {
+      const x = S.caSobra.find(i => i.id === a.dataset.tz);
+      if (!x || !confirm(`Trazer "${x.desc}" (${brl(x.valor)}) do Conta Azul para a central?`)) return;
+      rodar('salvarLancamentos', [{cartao: cartaoSel, venc: vencSel, data: x.comp, valor: x.valor, fornecedor: x.quem || '', categoria: (x.partes[0] || [])[0] || '',
+        descricao: x.desc || '', parcela: '', centro: centroDoCA(x.partes), origem: 'Conta Azul', caParcela: x.id}]).then(carregarCartoes).catch(erro);
+    });
+  }
+
+  function ligarForm(S) {
+    const f = id => el(id);
+    const atualizarVenc = () => {
+      const auto = vencDe(cartaoSel, f('fData').value);
+      const base = editando ? editando.venc : prefill ? prefill.venc : (f('fParc').value && /^([2-9]|\d{2})\//.test(f('fParc').value) ? vencSel : auto);
+      const opts = [...new Set([base, auto, vencSel].filter(Boolean))].sort();
+      f('fVenc').innerHTML = opts.map(v => `<option value="${v}" ${v === base ? 'selected' : ''}>${dia(v)}</option>`).join('');
+      const pm = !editando && /^(\d+)\/(\d+)$/.exec(f('fParc').value.trim());
+      const extra = pm && Number(pm[1]) < Number(pm[2]) ? ' As parcelas ' + (Number(pm[1]) + 1) + '/' + pm[2] + ' a ' + pm[2] + '/' + pm[2] + ' entram sozinhas nas próximas faturas.' : '';
+      f('fDica').textContent = ((base && base !== vencSel ? 'Vai para a fatura de ' + dia(base) + ' (' + cartao(cartaoSel).nome + ').' : '') + extra).trim();
+    };
+    const aplicarRegra = () => {
+      const r = C.base.regras[f('fForn').value.trim()];
+      if (!r || editando) return;
+      if (r.categoria) f('fCat').value = r.categoria;
+      if (r.descricao && !f('fDesc').value) f('fDesc').value = r.descricao;
+      if (r.centro && !f('fCentro').value && f('fForn').value.trim() !== 'Facebook') f('fCentro').value = r.centro;
+    };
+    f('fData').onchange = atualizarVenc; f('fParc').oninput = atualizarVenc;
+    f('fForn').onchange = aplicarRegra;
+    f('fCentro').onchange = () => {
+      if (f('fCentro').value !== 'R?') return;
+      const ativos = C.base.projetos.filter(p => p.ativo).map(p => p.nome);
+      const r = prompt('Projetos do rateio, separados por vírgula:\n' + ativos.join(', '), ativos.join(', '));
+      const ns = (r || '').split(',').map(s => s.trim()).filter(n => projeto(n));
+      if (!ns.length) { f('fCentro').value = ''; return; }
+      const v = 'R|' + ns.join(',');
+      const o = document.createElement('option'); o.value = v; o.textContent = rotuloCentro(v); f('fCentro').insertBefore(o, f('fCentro').lastChild); f('fCentro').value = v;
+    };
+    atualizarVenc();
+    if (prefill && !prefill.fornecedor) f('fForn').focus();
+    if (f('fCancelar')) f('fCancelar').onclick = () => { editando = prefill = null; desenharCartoes(); };
+    f('fSalvar').onclick = () => {
+      const l = {id: editando ? editando.id : undefined, cartao: cartaoSel, venc: f('fVenc').value, data: f('fData').value, valor: Number(f('fValor').value),
+        fornecedor: f('fForn').value.trim(), categoria: f('fCat').value, descricao: f('fDesc').value.trim(), parcela: f('fParc').value.trim(),
+        centro: f('fCentro').value, origem: editando ? editando.origem : prefill ? 'fatura' : 'central', padrao: prefill ? prefill.chave : undefined};
+      const falta = [!l.data && 'data', !l.valor && 'valor', !l.fornecedor && 'fornecedor', !l.centro && 'projeto', !l.categoria && 'categoria', !l.venc && 'fatura'].filter(Boolean);
+      if (falta.length) { f('fDica').innerHTML = '<span class="alerta">Falta: ' + falta.join(', ') + '.</span>'; return; }
+      f('fSalvar').disabled = true;
+      rodar('salvarLancamentos', [l]).then(() => {
+        const manter = !editando && !prefill ? {data: l.data, fornecedor: l.fornecedor, categoria: l.categoria, descricao: l.descricao, centro: l.centro} : null;
+        editando = null; prefill = null;
+        return carregarCartoes().then(() => {
+          if (manter) { // lançamento seguido do mesmo fornecedor (ex.: Facebook do dia): mantém tudo e limpa só o valor
+            el('fData').value = manter.data; el('fForn').value = manter.fornecedor; el('fCat').value = manter.categoria; el('fDesc').value = manter.descricao; el('fCentro').value = manter.centro;
+            el('fDica').textContent = 'Salvo ✓ ' + brl(l.valor) + ' · ' + l.fornecedor + ' · ' + rotuloCentro(l.centro) + (l.venc !== vencSel ? ' · fatura de ' + dia(l.venc) : '');
+            el('fValor').focus();
+          }
+        });
+      }).catch(e => { f('fSalvar').disabled = false; erro(e); });
+    };
+    f('fValor').onkeydown = ev => { if (ev.key === 'Enter') f('fSalvar').click(); };
+  }
+
+  function erro(e) { const m = el('cxMsg') || el('fDica'); if (m) m.innerHTML = '<span class="alerta">' + esc(e.message || e) + '</span>'; else alert(e.message || e); }
+
+  function modal(html) {
+    const m = document.createElement('div'); m.className = 'cx-modal'; m.innerHTML = '<div>' + html + '</div>';
+    m.onclick = ev => { if (ev.target === m) m.remove(); };
+    document.body.appendChild(m); return m;
+  }
+
+  // ---------- envio ao Conta Azul ----------
+  function enviar(listaToda) {
+    // o que já existe no Conta Azul com outro valor é corrigido lá; o resto é criado
+    const S = situacao(cartaoSel, vencSel);
+    const ajustes = listaToda.filter(l => (S.est[l.id].ca || {}).ajustar).map(l => ({l, x: S.est[l.id].ca.ajustar}));
+    const lista = listaToda.filter(l => !(S.est[l.id].ca || {}).ajustar);
+    const ids = lista.map(l => l.id);
+    el('cxMsg').textContent = 'Conferindo…';
+    rodar('conferirEnvio', ids).then(res => {
+      el('cxMsg').textContent = '';
+      const ok = res.filter(r => r.ok), ruins = res.filter(r => !r.ok);
+      const tot = r2(lista.filter(l => ok.some(r => r.id === l.id)).reduce((s, l) => s + l.valor, 0));
+      const m = modal(`<h3>Enviar ao Conta Azul</h3>
+        ${ok.length ? `<p>${ok.length} lançamentos novos, total ${brl(tot)}, como contas a pagar no ${esc(cartao(cartaoSel).nome)} com vencimento em ${dia(vencSel)}.</p>` : ''}
+        ${ajustes.length ? `<p>${ajustes.length} valores corrigidos no Conta Azul:</p><table class="cx-t">${ajustes.map(a => `<tr><td>${esc(a.x.desc || a.l.fornecedor)}</td><td class="v muted">${brl(a.x.valor)}</td><td>→</td><td class="v"><b>${brl(a.l.valor)}</b></td></tr>`).join('')}</table>` : ''}
+        ${(() => { const novos = [...new Set(ok.map(r => r.fornecedorNovo).filter(Boolean))]; return novos.length ? `<p>Fornecedores que serão cadastrados no Conta Azul: <b>${novos.map(esc).join(', ')}</b></p>` : ''; })()}
+        ${ruins.length ? `<p class="alerta">${ruins.length} não podem ir ainda:</p><table class="cx-t">${ruins.map(r => { const l = lista.find(x => x.id === r.id) || {}; return `<tr><td>${dia(l.data)}</td><td>${esc(l.fornecedor || '')}</td><td class="v">${brl(l.valor || 0)}</td><td class="alerta">${esc(r.erro)}</td></tr>`; }).join('')}</table>` : ''}
+        <div class="acoes" style="margin-top:14px"><button class="pri" id="mOk" ${ok.length + ajustes.length ? '' : 'disabled'}>Enviar</button><button id="mNao">Cancelar</button></div><div class="msg" id="mMsg"></div>`);
+      m.querySelector('#mNao').onclick = () => m.remove();
+      m.querySelector('#mOk').onclick = async () => {
+        m.querySelector('#mOk').disabled = true;
+        const todos = ok.map(r => r.id), feitos = [], falhas = [];
+        for (let i = 0; i < todos.length; i += 20) {
+          m.querySelector('#mMsg').textContent = `Enviando ${Math.min(i + 20, todos.length)} de ${todos.length}…`;
+          try { const r = await rodar('enviarAoContaAzul', todos.slice(i, i + 20)); r.forEach(x => (x.ok ? feitos : falhas).push(x)); }
+          catch (e) { falhas.push({erro: e.message || String(e)}); break; }
+        }
+        if (ajustes.length) {
+          m.querySelector('#mMsg').textContent = 'Corrigindo valores no Conta Azul…';
+          try { const r = await rodar('ajustarNoContaAzul', ajustes.map(a => ({id: a.l.id, parcela: a.x.id}))); r.forEach(x => (x.ok ? feitos : falhas).push(x)); }
+          catch (e) { falhas.push({erro: e.message || String(e)}); }
+        }
+        m.querySelector('#mMsg').innerHTML = `<span class="ok">${feitos.length} concluídos.</span>` + (falhas.length ? `<br><span class="alerta">${falhas.length} com erro: ${esc(falhas.map(f => f.erro).filter((v, i, a) => a.indexOf(v) === i).join(' | '))}</span>` : '');
+        m.querySelector('#mNao').textContent = 'Fechar';
+        carregarCartoes();
+      };
+    }).catch(erro);
+  }
+
+  // ---------- importar PDFs (fatura do banco ou relatório do Meta) ----------
+  el('cxArquivo').onchange = async ev => {
+    const arquivos = [...ev.target.files]; ev.target.value = '';
+    for (const a of arquivos) {
+      try {
+        const lib = await carregarPdfJs();
+        const linhas = await linhasDoPdf(lib, new Uint8Array(await a.arrayBuffer()));
+        const f = lerFatura(linhas);
+        if (f) { await confirmarFatura(f, a.name); continue; }
+        const r = lerRelatorioMeta(linhas);
+        if (r) { await confirmarMeta(r, a.name); continue; }
+        alert(a.name + ': não reconheci este PDF (aceito faturas do Itaú/Azul e relatórios de cobrança do Meta).');
+      } catch (e) { alert(a.name + ': ' + (e.message || e)); }
+    }
+  };
+
+  function confirmarFatura(f, nome) {
+    return new Promise(ok => {
+      const achado = C.base.cartoes.find(c => (c.finais || []).includes(f.final)) || cartao(cartaoSel);
+      const bate = v2(f.soma - f.total);
+      const m = modal(`<h3>Fatura ${esc(f.tipo)} · final ${esc(f.final || '?')}</h3>
+        <div class="campos"><label>Cartão<select id="mCartao">${C.base.cartoes.map(c => `<option value="${c.id}" ${c.id === achado.id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}</select></label>
+        <label>Vencimento<input id="mVenc" type="date" value="${f.venc || ''}"></label></div>
+        <p>${f.itens.length} linhas somando ${brl(f.soma)} · total impresso ${brl(f.total)} · <b class="${bate ? 'ok' : 'alerta'}">${bate ? 'confere' : 'não confere'}</b></p>
+        ${C.base.faturas[achado.id + '|' + f.venc] ? '<p class="muted">Já existe uma fatura importada para este vencimento; ela será substituída.</p>' : ''}
+        <div class="acoes"><button class="pri" id="mOk">Importar</button><button id="mNao">Cancelar</button></div>`);
+      m.querySelector('#mNao').onclick = () => { m.remove(); ok(); };
+      m.querySelector('#mOk').onclick = () => {
+        const cid = m.querySelector('#mCartao').value, venc = m.querySelector('#mVenc').value;
+        m.querySelector('#mOk').disabled = true;
+        rodar('salvarFatura', {cartao: cid, venc, total: f.total, tipo: f.tipo, final: f.final, itens: f.itens, arquivo: nome})
+          .then(() => { m.remove(); cartaoSel = cid; vencSel = venc; return carregarCartoes(); }).then(ok).catch(e => { alert(e.message || e); ok(); });
+      };
+    });
+  }
+
+  function confirmarMeta(r, nome) {
+    return new Promise(ok => {
+      const p = C.base.projetos.find(p => (p.meta || []).includes(r.negocio));
+      const m = modal(`<h3>Relatório do Meta · ${esc(r.negocio)}</h3>
+        <p>${r.cobrancas.length} cobranças de ${esc(r.periodo)} somando ${brl(r.soma)}.</p>
+        <div class="campos"><label>Projeto deste negócio<select id="mProj"><option value="">—</option>${C.base.projetos.filter(x => x.ativo).map(x => `<option ${p && p.nome === x.nome ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}</select></label></div>
+        <div class="acoes" style="margin-top:12px"><button class="pri" id="mOk">Importar</button><button id="mNao">Cancelar</button></div>`);
+      m.querySelector('#mNao').onclick = () => { m.remove(); ok(); };
+      m.querySelector('#mOk').onclick = () => {
+        const proj = m.querySelector('#mProj').value;
+        if (!proj) { alert('Escolha o projeto.'); return; }
+        rodar('salvarRelatorioMeta', Object.assign({}, r, {projeto: proj, arquivo: nome})).then(() => { m.remove(); return carregarCartoes(); }).then(ok).catch(e => { alert(e.message || e); ok(); });
+      };
+    });
+  }
+
+  // ---------- gastos por projeto ----------
+  let mesProj = null;
+  function telaProjetos() {
+    const meses = [...new Set(C.base.lancamentos.map(l => l.venc.slice(0, 7)))].sort().reverse();
+    if (!mesProj || !meses.includes(mesProj)) mesProj = meses.find(m => m <= hoje().slice(0, 7)) || meses[0];
+    const L = C.base.lancamentos.filter(l => l.venc.slice(0, 7) === mesProj);
+    const linhas = {}, cards = C.base.cartoes.filter(c => L.some(l => l.cartao === c.id));
+    L.forEach(l => dividir(l.centro, l.valor).forEach(([p, lado, v]) => {
+      const x = linhas[p] = linhas[p] || {total: 0, meraki: 0, expert: 0, porCartao: {}};
+      x.total += v; x[lado] += v; x.porCartao[l.cartao] = (x.porCartao[l.cartao] || 0) + v;
+    }));
+    const ordem = Object.keys(linhas).sort((a, b) => linhas[b].total - linhas[a].total);
+    const max = Math.max(1, ...ordem.map(p => linhas[p].total)), tot = r2(L.reduce((s, l) => s + l.valor, 0));
+    el('cxCorpo').innerHTML = `<div class="cx-painel">
+      <div class="cx-faturas">${meses.map(m => `<button data-m="${m}" class="${m === mesProj ? 'on' : ''}">faturas de ${mesAno(m + '-01')}</button>`).join('')}</div>
+      <div class="cx-kpis"><div class="cx-kpi"><span>Total nos cartões</span><b>${brl(tot)}</b></div>
+        <div class="cx-kpi"><span>Parte Meraki</span><b>${brl(r2(ordem.reduce((s, p) => s + linhas[p].meraki, 0)))}</b></div>
+        <div class="cx-kpi"><span>Parte dos experts</span><b>${brl(r2(ordem.reduce((s, p) => s + linhas[p].expert, 0)))}</b></div></div>
+      <table class="cx-t"><thead><tr><th>Projeto</th><th></th><th class="v">Total</th><th class="v">Parte Meraki</th><th class="v">Parte do expert</th>${cards.map(c => `<th class="v">${esc(c.nome)}</th>`).join('')}</tr></thead><tbody>
+      ${ordem.map(p => { const x = linhas[p]; return `<tr><td><b>${esc(p)}</b></td><td style="width:22%"><span class="cx-barra" title="Parte Meraki: ${brl(r2(x.meraki))}" style="width:${(x.meraki / max * 100).toFixed(1)}%"></span><span class="cx-barra e" title="Parte ${esc(p)}: ${brl(r2(x.expert))}" style="width:${(x.expert / max * 100).toFixed(1)}%"></span></td>
+        <td class="v"><b>${brl(r2(x.total))}</b></td><td class="v">${brl(r2(x.meraki))}</td><td class="v">${brl(r2(x.expert))}</td>${cards.map(c => `<td class="v">${x.porCartao[c.id] ? brl(r2(x.porCartao[c.id])) : '<span class="muted">—</span>'}</td>`).join('')}</tr>`; }).join('')}
+      <tr class="grupo"><td>Total</td><td></td><td class="v">${brl(tot)}</td><td></td><td></td>${cards.map(c => `<td class="v">${brl(r2(L.filter(l => l.cartao === c.id).reduce((s, l) => s + l.valor, 0)))}</td>`).join('')}</tr>
+      </tbody></table></div>`;
+    el('cxCorpo').querySelector('.cx-faturas').onclick = ev => { const x = ev.target.closest('[data-m]'); if (x) { mesProj = x.dataset.m; telaProjetos(); } };
+  }
+
+  // ---------- configurar ----------
+  function telaConfig() {
+    const B = C.base, contas = C.catalogo.contasCartao, centros = C.catalogo.centros;
+    const selCentro = (v, cls) => `<select class="${cls}"><option value=""></option>${[...new Set(centros.concat(v ? [v] : []))].map(c => `<option ${c === v ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
+    const linhaCartao = c => `<tr><td><input class="kNome" value="${esc(c.nome)}"></td><td><input class="kFin" value="${esc((c.finais || []).join(', '))}"></td>
+      <td><input class="kFech" type="number" min="1" max="31" value="${c.fech || ''}"></td><td><input class="kVenc" type="number" min="1" max="31" value="${c.venc || ''}"></td>
+      <td><select class="kConta"><option value="">— nenhuma —</option>${contas.map(x => `<option value="${x.id}" ${x.id === c.conta ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}</select></td>
+      <td><input type="checkbox" class="kAtivo" ${c.ativo ? 'checked' : ''}></td><td class="muted kId">${esc(c.id)}</td></tr>`;
+    const linhaProj = p => `<tr><td><input class="pNome" value="${esc(p.nome)}"></td><td>${selCentro(p.meraki, 'pMer')}</td><td>${selCentro(p.expert, 'pExp')}</td>
+      <td><input class="pParte" type="number" min="0" max="100" value="${p.parte}"></td><td><input class="pMeta" value="${esc((p.meta || []).join('; '))}"></td><td><input type="checkbox" class="pAtivo" ${p.ativo ? 'checked' : ''}></td></tr>`;
+    const regras = Object.keys(B.regras).sort((a, b) => a.localeCompare(b, 'pt'));
+    el('cxCorpo').innerHTML = `<div class="cx-painel cx-cfg"><h3>Cartões</h3>
+        <table class="cx-t"><thead><tr><th>Nome</th><th>Finais (separados por vírgula)</th><th>Fecha dia</th><th>Vence dia</th><th>Conta no Conta Azul</th><th>Ativo</th><th></th></tr></thead><tbody id="kCartoes">${B.cartoes.map(linhaCartao).join('')}</tbody></table>
+        <div class="acoes" style="margin-top:8px"><button id="kAdd">Adicionar cartão</button></div></div>
+      <div class="cx-painel cx-cfg"><h3>Projetos</h3>
+        <table class="cx-t"><thead><tr><th>Nome</th><th>Centro lado Meraki</th><th>Centro lado expert</th><th>% Meraki</th><th>Negócios no Meta</th><th>Ativo</th></tr></thead><tbody id="kProjs">${B.projetos.map(linhaProj).join('')}</tbody></table>
+        <div class="acoes" style="margin-top:8px"><button id="pAdd">Adicionar projeto</button></div></div>
+      <div class="cx-painel cx-cfg"><h3>Fornecedores conhecidos (${regras.length})</h3>
+        <table class="cx-t"><thead><tr><th>Fornecedor</th><th>Categoria</th><th>Descrição</th><th>Projeto padrão</th><th></th></tr></thead><tbody id="kRegras">
+        ${regras.map(f => { const r = B.regras[f]; return `<tr data-f="${esc(f)}"><td>${esc(f)}${C.catalogo.fornecedores.length && !C.catalogo.fornecedores.includes(f) ? ' <span class="cx-st n">novo</span>' : ''}</td><td class="muted">${esc(r.categoria || '')}</td><td class="muted">${esc(r.descricao || '')}</td><td class="muted">${r.centro ? esc(rotuloCentro(r.centro)) : ''}</td><td><span class="cx-lk neg" data-rmr="${esc(f)}">esquecer</span></td></tr>`; }).join('')}
+        </tbody></table></div>
+      <div class="acoes"><button class="pri" id="kSalvar">Salvar configurações</button><span class="msg" id="kMsg"></span></div>`;
+    const regrasNovas = Object.assign({}, B.regras);
+    el('kRegras').onclick = ev => { const x = ev.target.closest('[data-rmr]'); if (x) { delete regrasNovas[x.dataset.rmr]; x.closest('tr').remove(); } };
+    el('kAdd').onclick = () => el('kCartoes').insertAdjacentHTML('beforeend', linhaCartao({nome: '', finais: [], fech: '', venc: '', conta: '', ativo: true, id: ''}));
+    el('pAdd').onclick = () => el('kProjs').insertAdjacentHTML('beforeend', linhaProj({nome: '', meraki: '', expert: '', parte: 50, meta: [], ativo: true}));
+    el('kSalvar').onclick = () => {
+      const cartoes = [...el('kCartoes').rows].map(tr => {
+        const q = s => tr.querySelector(s), nome = q('.kNome').value.trim();
+        const finais = q('.kFin').value.split(/[,;\s]+/).filter(x => /^\d{4}$/.test(x));
+        return {id: q('.kId').textContent || 'c' + (finais[0] || semAc(nome).replace(/\W/g, '')), nome, finais, fech: Number(q('.kFech').value), venc: Number(q('.kVenc').value),
+          conta: q('.kConta').value || null, ativo: q('.kAtivo').checked};
+      }).filter(c => c.nome);
+      const projetos = [...el('kProjs').rows].map(tr => {
+        const q = s => tr.querySelector(s);
+        return {nome: q('.pNome').value.trim(), meraki: q('.pMer').value, expert: q('.pExp').value, parte: Number(q('.pParte').value),
+          meta: q('.pMeta').value.split(';').map(s => s.trim()).filter(Boolean), ativo: q('.pAtivo').checked};
+      }).filter(p => p.nome);
+      if (cartoes.some(c => !c.fech || !c.venc)) { el('kMsg').innerHTML = '<span class="alerta">Preencha o dia de fechamento e de vencimento de todos os cartões.</span>'; return; }
+      if (projetos.some(p => !p.meraki || !p.expert)) { el('kMsg').innerHTML = '<span class="alerta">Escolha os dois centros de custo de cada projeto.</span>'; return; }
+      rodar('salvarConfigCartoes', {cartoes, projetos, regras: regrasNovas}).then(() => { el('kMsg').innerHTML = '<span class="ok">Salvo ✓</span>'; return carregarCartoes(); }).catch(e => el('kMsg').innerHTML = '<span class="alerta">' + esc(e.message || e) + '</span>');
+    };
+  }
+
+  el('cxSub').onclick = ev => { const b = ev.target.closest('[data-v]'); if (b) { vista = b.dataset.v; editando = prefill = null; desenharCartoes(); } };
+  if (typeof abrirAba === 'function') abrirAba('cartoes');
+})();
+</script>
+
+</body>
+</html>

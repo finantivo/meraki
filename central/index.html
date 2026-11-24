@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Central Financeira Meraki</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+<style>
+body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: Inter, system-ui, sans-serif;
+  background: linear-gradient(115deg, #466a5e 0%, #857a50 55%, #c4610f 100%); color: #1f2a26; }
+.caixa { background: #fff; border-radius: 16px; padding: 32px 28px; width: min(360px, 90vw); box-sizing: border-box; box-shadow: 0 10px 40px rgba(0,0,0,.18); }
+.marca { font-family: Outfit, sans-serif; font-weight: 700; font-size: 30px; color: #466a5e; line-height: 1; }
+.marca span { display: block; font-size: 10px; letter-spacing: .5em; font-weight: 600; margin-top: 4px; }
+h1 { font-size: 15px; font-weight: 500; color: #55605a; margin: 18px 0 16px; }
+input { width: 100%; box-sizing: border-box; font: inherit; padding: 11px 12px; border: 1px solid #e6dfd3; border-radius: 10px; margin-bottom: 12px; }
+button { width: 100%; font: inherit; font-weight: 600; padding: 11px; border: 0; border-radius: 10px; background: #466a5e; color: #fff; cursor: pointer; }
+button:disabled { opacity: .6; cursor: default; }
+.erro { color: #c8600c; font-size: 13px; min-height: 18px; margin-top: 10px; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="caixa">
+  <div class="marca">Meraki<span>DIGITAL</span></div>
+  <h1 id="titulo">Central Financeira Meraki</h1>
+  <form id="f">
+    <input type="password" id="senha" placeholder="Senha" autocomplete="current-password" autofocus>
+    <input type="password" id="senha2" placeholder="Repita a senha" hidden>
+    <button type="submit" id="botao">Entrar</button>
+  </form>
+  <div class="erro" id="erro"></div>
+</div>
+<script src="../comum.js"></script>
+<script>
+(function () {
+  const APP = 'notas', $ = id => document.getElementById(id);
+  if (sessaoMeraki(APP)) { location.replace('app.html'); return; }
+  let criar = false;
+  chamarMeraki({fn: 'precisaCriar', app: APP}).then(c => {
+    criar = c;
+    if (c) { $('titulo').textContent = 'Central Financeira Meraki · crie a senha de acesso'; $('senha').placeholder = 'Nova senha (mínimo 6 caracteres)'; $('senha2').hidden = false; }
+  }).catch(() => {});
+  $('f').addEventListener('submit', ev => {
+    ev.preventDefault();
+    const s = $('senha').value;
+    if (s.length < 6) { $('erro').textContent = 'A senha precisa ter pelo menos 6 caracteres.'; return; }
+    if (criar && s !== $('senha2').value) { $('erro').textContent = 'As senhas não conferem.'; return; }
+    $('botao').disabled = true; $('erro').textContent = '';
+    chamarMeraki({fn: 'entrar', app: APP, senha: s}).then(chave => {
+      try { localStorage.setItem('meraki_sessao_' + APP, chave); } catch (e) {}
+      location.replace('app.html');
+    }).catch(e => { $('erro').textContent = e.message || 'Não consegui entrar.'; $('botao').disabled = false; });
+  });
+})();
+</script>
+</body>
+</html>
