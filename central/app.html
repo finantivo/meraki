@@ -239,6 +239,10 @@ el('abas').onclick = ev => { const b = ev.target.closest('[data-a]'); if (b) abr
 table.cx-t td, table.cx-t th { padding: 5px 7px; font-size: 12.5px; }
 table.cx-t tr:hover td { background: #faf8f4; }
 table.cx-t th.c, table.cx-t td.c { text-align: center; white-space: nowrap; }
+.cx-filtro { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 10px; }
+.cx-filtro select, .cx-filtro input { min-width: 150px; }
+.cx-filtro .cx-lk { margin-left: 4px; }
+table.cx-t tr.cx-total td { background: var(--sup2); font-weight: 600; border-top: 2px solid var(--linha); }
 .cx-st { font-size: 10.5px; padding: 1px 7px; border-radius: 999px; white-space: nowrap; display: inline-block; }
 .cx-st.v { background: var(--suave); color: #2b4a40; } .cx-st.a { background: #faeeda; color: #633806; } .cx-st.n { background: #f1efe8; color: #5f5e5a; }
 .cx-st.r { background: #fbe3d6; color: #8a3b0c; }
@@ -657,11 +661,28 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     <div class="cx-dica" id="fDica"></div>`;
   }
 
+  // filtro da tabela de lançamentos (continua valendo ao trocar de fatura ou de cartão)
+  const filtro = {forn: '', proj: '', cat: '', texto: ''};
+  const projetoDoCentro = c => { const [t, a] = String(c || 'M').split('|'); return t === 'M' ? 'Meraki' : t === 'R' ? 'Rateio' : a; };
+
   function tabelaLancamentos(S) {
-    if (!S.L.length) return '<div class="cx-vazio">Nenhum lançamento nesta fatura.</div>';
+    if (!S.L.length) return '<div id="cxTabela" class="cx-vazio">Nenhum lançamento nesta fatura.</div>';
     const forns = new Set(C.catalogo.fornecedores);
-    return `<table class="cx-t"><thead><tr><th>Data</th><th>Fornecedor</th><th>Descrição</th><th>Projeto</th><th>Categoria</th><th class="c">Valor</th><th class="c">Fatura</th><th class="c">Conta Azul</th><th class="c">Ações</th></tr></thead><tbody id="cxLinhas">
-      ${S.L.map(l => {
+    const unicos = f => [...new Set(S.L.map(f).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt'));
+    const opc = (lista, sel, vazio) => `<option value="">${vazio}</option>` + lista.map(v => `<option ${v === sel ? 'selected' : ''}>${esc(v)}</option>`).join('');
+    const t = semAc(filtro.texto);
+    const L = S.L.filter(l => (!filtro.forn || l.fornecedor === filtro.forn) && (!filtro.proj || projetoDoCentro(l.centro) === filtro.proj)
+      && (!filtro.cat || l.categoria === filtro.cat) && (!t || semAc(l.descricao + ' ' + l.fornecedor).includes(t)));
+    const filtrando = filtro.forn || filtro.proj || filtro.cat || filtro.texto;
+    return `<div id="cxTabela"><div class="cx-filtro">
+      <select data-fl="forn">${opc(unicos(l => l.fornecedor), filtro.forn, 'Todos os fornecedores')}</select>
+      <select data-fl="proj">${opc(unicos(l => projetoDoCentro(l.centro)), filtro.proj, 'Todos os projetos')}</select>
+      <select data-fl="cat">${opc(unicos(l => l.categoria), filtro.cat, 'Todas as categorias')}</select>
+      <input data-fl="texto" placeholder="Buscar na descrição" value="${esc(filtro.texto)}">
+      ${filtrando ? '<span class="cx-lk" data-limpar="1">limpar filtro</span>' : ''}
+    </div>
+    <table class="cx-t"><thead><tr><th>Data</th><th>Fornecedor</th><th>Descrição</th><th>Projeto</th><th>Categoria</th><th class="c">Valor</th><th class="c">Fatura</th><th class="c">Conta Azul</th><th class="c">Ações</th></tr></thead><tbody id="cxLinhas">
+      ${L.map(l => {
         const e = S.est[l.id];
         const stF = e.fatura ? `<span class="cx-st v" title="${esc(e.fatura.map(i => i.desc + ' ' + brl(i.valor)).join(' + '))}">confere${e.fatura.length > 1 ? ' (' + e.fatura.length + ' linhas)' : ''}</span>` : S.F.total != null ? '<span class="cx-st r">não está na fatura</span>' : '<span class="cx-st n">aguardando</span>';
         const stC = e.ca === 'enviado' ? '<span class="cx-st v">enviado</span>' : e.ca && e.ca.ajustar ? `<span class="cx-st r" title="${esc(e.ca.ajustar.desc)}">Conta Azul tem ${brl(e.ca.ajustar.valor)}</span>` : e.ca ? `<span class="cx-st v" title="${esc(e.ca.map(x => x.desc + ' ' + brl(x.valor)).join(' + '))}">lançado</span>`
@@ -670,7 +691,26 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
         return `<tr><td>${dia(l.data)}</td><td>${esc(l.fornecedor)}</td><td>${esc(l.descricao)}${l.parcela && l.descricao.indexOf(l.parcela) < 0 ? ' <span class="muted">' + esc(l.parcela) + '</span>' : ''}</td>
           <td>${esc(rotuloCentro(l.centro))}</td><td class="muted">${esc(l.categoria)}</td><td class="c ${l.valor < 0 ? 'neg' : ''}">${brl(l.valor)}</td><td class="c">${stF}</td><td class="c">${stC}</td>
           <td class="c">${trava ? '' : `<span class="cx-lk" data-ed="${l.id}">editar</span> · <span class="cx-lk neg" data-rm="${l.id}">excluir</span>`}</td></tr>`;
-      }).join('')}</tbody></table>`;
+      }).join('')}
+      <tr class="cx-total"><td colspan="5">${filtrando ? 'Total do filtro' : 'Total'} · ${L.length} ${L.length === 1 ? 'lançamento' : 'lançamentos'}</td><td class="c">${brl(r2(L.reduce((s, l) => s + l.valor, 0)))}</td><td colspan="3"></td></tr>
+      </tbody></table></div>`;
+  }
+
+  function ligarTabela(S) {
+    const caixa = el('cxTabela');
+    if (!caixa) return;
+    const redesenhar = () => { caixa.outerHTML = tabelaLancamentos(S); ligarTabela(S); };
+    caixa.querySelectorAll('select[data-fl]').forEach(x => x.onchange = () => { filtro[x.dataset.fl] = x.value; redesenhar(); });
+    const busca = caixa.querySelector('input[data-fl]');
+    if (busca) busca.oninput = () => { filtro.texto = busca.value; clearTimeout(busca._t); busca._t = setTimeout(() => { redesenhar(); const b = el('cxTabela').querySelector('input[data-fl]'); b.focus(); b.setSelectionRange(b.value.length, b.value.length); }, 300); };
+    const limpar = caixa.querySelector('[data-limpar]');
+    if (limpar) limpar.onclick = () => { Object.keys(filtro).forEach(k => filtro[k] = ''); redesenhar(); };
+    const linhas = el('cxLinhas');
+    if (linhas) linhas.onclick = ev => {
+      const ed = ev.target.closest('[data-ed]'), rm = ev.target.closest('[data-rm]');
+      if (ed) { editando = C.base.lancamentos.find(l => l.id === ed.dataset.ed); prefill = null; desenharCartoes(); el('fValor').focus(); }
+      if (rm && confirm('Excluir este lançamento da central?')) rodar('excluirLancamentos', [rm.dataset.rm]).then(carregarCartoes).catch(erro);
+    };
   }
 
   function tabelaSoFatura(S) {
@@ -686,12 +726,7 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     el('cxCorpo').querySelector('.cx-cartoes').onclick = ev => { const x = ev.target.closest('[data-c]'); if (x) { cartaoSel = x.dataset.c; vencSel = null; editando = prefill = null; desenharCartoes(); } };
     el('cxCorpo').querySelector('.cx-faturas').onclick = ev => { const x = ev.target.closest('[data-f]'); if (x) { vencSel = x.dataset.f; desenharCartoes(); } };
     ligarForm(S);
-    const linhas = el('cxLinhas');
-    if (linhas) linhas.onclick = ev => {
-      const ed = ev.target.closest('[data-ed]'), rm = ev.target.closest('[data-rm]');
-      if (ed) { editando = C.base.lancamentos.find(l => l.id === ed.dataset.ed); prefill = null; desenharCartoes(); el('fValor').focus(); }
-      if (rm && confirm('Excluir este lançamento da central?')) rodar('excluirLancamentos', [rm.dataset.rm]).then(carregarCartoes).catch(erro);
-    };
+    ligarTabela(S);
     const sf = el('cxSoFat');
     if (sf) sf.onclick = ev => { const x = ev.target.closest('[data-pf]'); if (x) { prefill = S.soFatura[Number(x.dataset.pf)]; editando = null; desenharCartoes(); el('cxForm').scrollIntoView({block: 'center'}); } };
     el('cxPdf').onclick = () => el('cxArquivo').click();
