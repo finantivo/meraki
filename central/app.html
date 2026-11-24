@@ -732,6 +732,7 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
         <div class="cx-painel">
           <div class="cx-acoes">
             <button id="cxPdf">Importar PDF (fatura ou relatório do Meta)</button>
+            <button id="cxExcel">Exportar Excel</button>
             ${prontas.length ? `<button id="cxSugeridos">Lançar ${prontas.length} da fatura com sugestão completa</button>` : ''}
             ${naoVieram.length ? `<button id="cxProxima">Passar ${naoVieram.length} que não vieram para a próxima fatura</button>` : ''}
             <button class="pri cx-dir" id="cxEnviar" ${enviaveis.length ? '' : 'disabled'}>Enviar ${enviaveis.length} conferidos ao Conta Azul</button>
@@ -780,14 +781,93 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
   const filtro = {forn: '', proj: '', cat: '', texto: ''};
   const projetoDoCentro = c => { const [t, a] = String(c || 'M').split('|'); return t === 'M' ? 'Meraki' : t === 'R' ? 'Rateio' : a; };
 
+  function filtrar(lista) {
+    const t = semAc(filtro.texto);
+    return lista.filter(l => (!filtro.forn || l.fornecedor === filtro.forn) && (!filtro.proj || projetoDoCentro(l.centro) === filtro.proj)
+      && (!filtro.cat || l.categoria === filtro.cat) && (!t || semAc(l.descricao + ' ' + l.fornecedor).includes(t)));
+  }
+
+  // ---------- exportar para Excel (mesmas colunas da planilha da Lu, e as de conferência depois) ----------
+  function carregarXlsx() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    return new Promise((ok, falha) => {
+      const sc = document.createElement('script');
+      if (window.__NONCE) sc.nonce = window.__NONCE;
+      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      sc.onload = () => window.XLSX ? ok(window.XLSX) : falha(new Error('Não consegui carregar o gerador de Excel.'));
+      sc.onerror = () => falha(new Error('Não consegui carregar o gerador de Excel (sem internet?).'));
+      document.head.appendChild(sc);
+    });
+  }
+
+  // centro de custo escrito como na planilha da Lu
+  function centroPlanilha(centro) {
+    const [t, a, b] = String(centro || 'M').split('|');
+    if (t === 'M') return 'Meraki';
+    if (t === 'R') return 'Rateio';
+    const p = projeto(a) || {parte: 50};
+    if (b === 'm') return 'Meraki_' + a;
+    if (b === 'e') return a + ' 100%';
+    return 'Meraki_' + a + ' ' + p.parte + '% / ' + a + ' ' + (100 - p.parte) + '%';
+  }
+
+  const dataXls = iso => { const [a, m, d] = String(iso).split('-').map(Number); return new Date(a, m - 1, d); };
+
+  function linhasExcel(lista) {
+    const cab = ['Data da Compra', 'Valor', 'Categoria', 'Descrição', 'Cliente/Fornecedor', 'Centro de Custo', 'Cartão', 'Vencimento',
+      'Parcela', 'Parte Meraki', 'Parte do expert', 'Projeto', 'Fatura', 'Conta Azul', 'Origem'];
+    const sits = {};
+    const linhas = lista.map(l => {
+      const k = l.cartao + '|' + l.venc, S = sits[k] = sits[k] || situacao(l.cartao, l.venc), e = S.est[l.id] || {};
+      const partes = dividir(l.centro, l.valor), mer = r2(partes.filter(p => p[1] === 'meraki').reduce((s, p) => s + p[2], 0));
+      const fat = e.fatura ? 'confere' : e.sugere ? 'fatura tem ' + brl(e.sugere.valor) : S.F.total != null ? 'não está na fatura' : 'aguardando fatura';
+      const ca = e.ca === 'enviado' ? 'enviado' : e.ca && e.ca.ajustar ? 'Conta Azul tem ' + brl(e.ca.ajustar.valor) : e.ca && e.ca.ajustarGrupo ? 'Conta Azul tem ' + brl(e.ca.ajustarGrupo.valor) + ' no total'
+        : e.ca && e.ca.conflito ? 'conferir no Conta Azul' : e.ca ? 'lançado' : e.fatura ? 'pronto para enviar' : '';
+      return [dataXls(l.data), -l.valor, l.categoria, l.descricao, l.fornecedor, centroPlanilha(l.centro), cartao(l.cartao).nome, dataXls(l.venc),
+        l.parcela || '', -mer, -r2(l.valor - mer), rotuloCentro(l.centro), fat, ca, l.origem || ''];
+    });
+    return [cab].concat(linhas);
+  }
+
+  async function exportarExcel(lista, nomeArquivo, nomeAba) {
+    const X = await carregarXlsx();
+    const ordenada = lista.slice().sort((a, b) => a.cartao.localeCompare(b.cartao) || a.data.localeCompare(b.data));
+    const aoa = linhasExcel(ordenada);
+    aoa.push([], ['Total', -r2(ordenada.reduce((s, l) => s + l.valor, 0)), '', ordenada.length + ' lançamentos']);
+    const ws = X.utils.aoa_to_sheet(aoa, {cellDates: true});
+    const ref = X.utils.decode_range(ws['!ref']);
+    for (let r = 1; r <= ref.e.r; r++) {
+      [0, 7].forEach(c => { const cel = ws[X.utils.encode_cell({r, c})]; if (cel && cel.t === 'd') cel.z = 'dd/mm/yyyy'; });
+      [1, 9, 10].forEach(c => { const cel = ws[X.utils.encode_cell({r, c})]; if (cel && cel.t === 'n') cel.z = '#,##0.00'; });
+    }
+    ws['!cols'] = [12, 12, 26, 34, 24, 36, 16, 12, 8, 12, 12, 26, 18, 24, 18].map(w => ({wch: w}));
+    ws['!autofilter'] = {ref: 'A1:O' + (ordenada.length + 1)};
+    const wb = X.utils.book_new();
+    X.utils.book_append_sheet(wb, ws, nomeAba);
+    X.writeFile(wb, nomeArquivo, {cellDates: true});
+  }
+
+  function abrirExportar(S) {
+    const mes = vencSel.slice(0, 7), aba = mesAno(vencSel).replace('/', '');
+    const doMes = C.base.lancamentos.filter(l => l.venc.slice(0, 7) === mes);
+    const daTela = filtrar(S.L);
+    const m = modal(`<h3>Exportar para Excel</h3>
+      <div class="acoes" style="flex-direction:column;align-items:stretch;gap:10px">
+        <button id="xFat">Esta fatura · ${esc(cartao(cartaoSel).nome)} ${dia(vencSel)} (${daTela.length} lançamentos${daTela.length !== S.L.length ? ', com o filtro' : ''})</button>
+        <button id="xMes">Todos os cartões com fatura em ${mesAno(vencSel)} (${doMes.length} lançamentos, como a planilha)</button>
+      </div><div class="msg" id="xMsg"></div><div class="acoes" style="margin-top:12px"><button id="xNao">Fechar</button></div>`);
+    const fazer = (lista, arq) => { m.querySelector('#xMsg').textContent = 'Gerando…'; exportarExcel(lista, arq, aba).then(() => m.remove()).catch(e => m.querySelector('#xMsg').innerHTML = '<span class="alerta">' + esc(e.message || e) + '</span>'); };
+    m.querySelector('#xFat').onclick = () => fazer(daTela, 'Cartões - ' + cartao(cartaoSel).nome.replace(/[\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() + ' - fatura ' + dia(vencSel).replace(/\//g, '-') + '.xlsx');
+    m.querySelector('#xMes').onclick = () => fazer(doMes, 'Cartões - faturas ' + mesAno(vencSel).replace('/', '-') + '.xlsx');
+    m.querySelector('#xNao').onclick = () => m.remove();
+  }
+
   function tabelaLancamentos(S) {
     if (!S.L.length) return '<div id="cxTabela" class="cx-vazio">Nenhum lançamento nesta fatura.</div>';
     const forns = new Set(C.catalogo.fornecedores);
     const unicos = f => [...new Set(S.L.map(f).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt'));
     const opc = (lista, sel, vazio) => `<option value="">${vazio}</option>` + lista.map(v => `<option ${v === sel ? 'selected' : ''}>${esc(v)}</option>`).join('');
-    const t = semAc(filtro.texto);
-    const L = S.L.filter(l => (!filtro.forn || l.fornecedor === filtro.forn) && (!filtro.proj || projetoDoCentro(l.centro) === filtro.proj)
-      && (!filtro.cat || l.categoria === filtro.cat) && (!t || semAc(l.descricao + ' ' + l.fornecedor).includes(t)));
+    const L = filtrar(S.L);
     const filtrando = filtro.forn || filtro.proj || filtro.cat || filtro.texto;
     return `<div id="cxTabela"><div class="cx-filtro">
       <select data-fl="forn">${opc(unicos(l => l.fornecedor), filtro.forn, 'Todos os fornecedores')}</select>
@@ -853,6 +933,7 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     const sf = el('cxSoFat');
     if (sf) sf.onclick = ev => { const x = ev.target.closest('[data-pf]'); if (x) { prefill = S.soFatura[Number(x.dataset.pf)]; editando = null; desenharCartoes(); el('cxForm').scrollIntoView({block: 'center'}); } };
     el('cxPdf').onclick = () => el('cxArquivo').click();
+    el('cxExcel').onclick = () => abrirExportar(S);
     if (el('cxProxima')) el('cxProxima').onclick = () => {
       if (!confirm(`Passar ${naoVieram.length} lançamentos que não vieram nesta fatura para a fatura seguinte (${dia(proximaFatura(vencSel))})?`)) return;
       rodar('salvarLancamentos', naoVieram.map(l => Object.assign({}, l, {venc: proximaFatura(l.venc)}))).then(carregarCartoes).catch(erro);
