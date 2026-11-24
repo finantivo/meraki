@@ -469,6 +469,12 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     const [a, m, d] = venc.split('-').map(Number), t = a * 12 + m;
     return Math.floor(t / 12) + '-' + String(t % 12 + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
   }
+  // dia em que a fatura que vence em "venc" fecha (no mês anterior quando o vencimento vem antes do fechamento)
+  function fechamentoDe(c, venc) {
+    let [a, m] = venc.split('-').map(Number);
+    if (c.venc < c.fech) { m--; if (m < 1) { m = 12; a--; } }
+    return a + '-' + String(m).padStart(2, '0') + '-' + String(Math.min(c.fech, new Date(a, m, 0).getDate())).padStart(2, '0');
+  }
   const assinaturaAtiva = id => (C.base.assinaturas || []).some(a => a.id === id && a.ativo);
   // fornecedor que vai agrupado para o Conta Azul (padrão: Facebook; muda em Configurar)
   const agrupa = f => { const r = C.base.regras[f] || {}; return r.agrupar !== undefined ? !!r.agrupar : semAc(f) === 'facebook'; };
@@ -706,7 +712,7 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
         const livre = x.limite ? r2(x.limite - usado) : null;
         const mil = v => 'R$ ' + (Math.abs(v) >= 1000 ? (v / 1000).toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + ' mil' : v.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
         return `<div class="cx-cartao ${x.id === cartaoSel ? 'on' : ''}" data-c="${x.id}" title="Fecha dia ${x.fech} · vence dia ${x.venc}${x.limite ? ' · limite ' + brl(x.limite) + ' · em uso ' + brl(usado) : ''}">
-          <div class="cx-topo"><b>${esc(x.nome)}</b><small>vence ${ab ? dia(ab).slice(0, 5) : '—'}</small></div>
+          <div class="cx-topo"><b>${esc(x.nome)}</b><small>fecha ${ab ? dia(fechamentoDe(x, ab)).slice(0, 5) : '—'} · vence ${ab ? dia(ab).slice(0, 5) : '—'}</small></div>
           <div class="cx-v">${brl(tot)}</div>
           ${pct !== null ? `<div class="cx-lim"><i style="width:${pct}%" class="${pct >= 80 ? 'alto' : ''}"></i></div><small class="${pct >= 80 ? 'alerta' : ''}">${pct}% do limite · livre ${mil(livre)}</small>` : ''}
           ${x.conta ? '' : '<small class="alerta">sem conta no Conta Azul</small>'}</div>`;
