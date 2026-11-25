@@ -16,7 +16,8 @@ header { background: linear-gradient(115deg, var(--verde), var(--oliva) 55%, var
 .marca { font-family: Outfit, sans-serif; font-weight: 700; font-size: 24px; line-height: 1; }
 .marca span { display: block; font-size: 10px; letter-spacing: .5em; font-weight: 500; margin-top: 3px; }
 .topo h1 { font-family: Outfit, sans-serif; font-weight: 500; font-size: 18px; margin: 0; opacity: .95; }
-.topo small { margin-left: auto; opacity: .85; font-size: 12px; }
+.topo small { margin-left: auto; opacity: .9; font-size: 12px; display: flex; align-items: center; gap: 10px; }
+.topo small button { background: rgba(255,255,255,.16); color: #fff; border: 1px solid rgba(255,255,255,.4); padding: 4px 10px; font-size: 12px; border-radius: 999px; }
 .abas { max-width: 1500px; margin: 0 auto; padding: 0 28px; display: flex; gap: 4px; }
 .abas button { background: transparent; border: 0; color: rgba(255,255,255,.8); padding: 9px 16px 11px; border-radius: 10px 10px 0 0; font-weight: 600; }
 .abas button.on { background: var(--bg); color: var(--verde); }
@@ -56,7 +57,7 @@ details summary { cursor: pointer; color: var(--verde); font-weight: 600; font-s
 <link rel="icon" type="image/svg+xml" href="../icone-central.svg">
 </head>
 <body>
-<header><div class="topo"><div class="marca">Meraki<span>DIGITAL</span></div><h1>Central Financeira</h1><small id="atualizado"></small></div>
+<header><div class="topo"><div class="marca">Meraki<span>DIGITAL</span></div><h1>Central Financeira</h1><small><span id="atualizado"></span><button id="atualizarCA" title="Buscar agora no Conta Azul o que mudou">Atualizar agora</button></small></div>
   <nav class="abas" id="abas"><button data-a="cartoes" class="on">Cartões</button><button data-a="notas">Notas de débito e crédito</button><button disabled>Conferência de vendas</button></nav></header>
 <main id="aba-notas" hidden>
   <aside><div class="lista" id="lista"></div></aside>
@@ -473,6 +474,7 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
   function carregarCartoes() {
     return rodar('dadosCartoes').then(d => {
       C = d;
+      if (d.atualizado) el('atualizado').textContent = 'Conta Azul atualizado em ' + d.atualizado;
       if (!cartaoSel || !C.base.cartoes.some(c => c.id === cartaoSel)) cartaoSel = (C.base.cartoes.find(c => c.ativo) || {}).id;
       desenharCartoes();
     }).catch(e => { el('cxCorpo').innerHTML = `<div class="cx-painel neg">${esc(e.message || e)}</div>`; });
@@ -1263,6 +1265,17 @@ if (typeof module !== 'undefined') module.exports = {linhasDoPdf, lerFatura, ler
     };
   }
 
+  // "Atualizar agora": busca no Conta Azul e recarrega a aba aberta
+  el('atualizarCA').onclick = () => {
+    const b = el('atualizarCA'); b.disabled = true; b.textContent = 'Atualizando…';
+    rodar('atualizarAgora').then(r => {
+      b.disabled = false; b.textContent = 'Atualizar agora';
+      if (r.atualizado) el('atualizado').textContent = 'Conta Azul atualizado em ' + r.atualizado;
+      if (!r.ok) el('atualizado').textContent += ' · já estava atualizando, tente de novo em 1 minuto';
+      C = null; carregarCartoes();
+      if (typeof notasCarregadas !== 'undefined' && notasCarregadas && typeof carregar === 'function') carregar();
+    }).catch(e => { b.disabled = false; b.textContent = 'Atualizar agora'; alert(e.message || e); });
+  };
   el('cxSub').onclick = ev => { const b = ev.target.closest('[data-v]'); if (b) { vista = b.dataset.v; editando = prefill = null; desenharCartoes(); } };
   if (typeof abrirAba === 'function') abrirAba('cartoes');
 })();
